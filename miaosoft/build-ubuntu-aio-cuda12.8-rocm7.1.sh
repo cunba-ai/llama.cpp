@@ -43,9 +43,13 @@ docker run --rm \
     -e BUILD_DATE="${BUILD_DATE}" \
     -e COMMIT_ID="${COMMIT_ID}" \
     -e BUILD_TAG="${BUILD_TAG}" \
+    -e OUTPUT_ZIP="${OUTPUT_ZIP}" \
     llama-cpp-builder:cu12_rocm72_vk \
     bash -c "
         set -e
+        # Fix git ownership warning
+        git config --global --add safe.directory /workspace || true
+
         echo '=== Configuring build ==='
         export HIPCXX=\"\$(hipconfig -l)/clang\" && \
         export HIP_PATH=\"\$(hipconfig -R)\" && \
@@ -64,15 +68,16 @@ docker run --rm \
             -DAMDGPU_TARGETS='gfx1100;gfx1101;gfx1102;gfx1150;gfx1151;gfx1200;gfx1201' && \
 
         echo ''
-        echo '=== Building ===' && \
-        make -j\$(nproc) && \
+        echo '=== Building llama-cli and llama-server ===' && \
+        make -j\$(nproc) llama-cli llama-server && \
 
         echo ''
         echo '=== Packaging build artifacts ===' && \
         cd /workspace && \
-        rm -f output/\${OUTPUT_ZIP} && \
-        zip -r output/\${OUTPUT_ZIP} \
-            build_linux/bin/* \
+        rm -f output/*.zip && \
+        zip -r \"output/\${OUTPUT_ZIP}\" \
+            build_linux/bin/llama-cli \
+            build_linux/bin/llama-server \
             build_linux/lib/*.so* \
             -x '*_test*' \
             -x '*_test.exe*' \
@@ -80,10 +85,10 @@ docker run --rm \
 
         echo ''
         echo '=== Build complete! ===' && \
-        ls -lh output/\${OUTPUT_ZIP} && \
+        ls -lh \"output/\${OUTPUT_ZIP}\" && \
         echo '' && \
         echo 'Package contents:' && \
-        unzip -l output/\${OUTPUT_ZIP} | head -20
+        unzip -l \"output/\${OUTPUT_ZIP}\" | head -20
     "
 
 echo ""

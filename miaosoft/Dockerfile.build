@@ -46,7 +46,10 @@ RUN wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | \
     echo "Pin: origin repo.radeon.com" >> /etc/apt/preferences.d/rocm-pin && \
     echo "Pin-Priority: 1001" >> /etc/apt/preferences.d/rocm-pin && \
     apt-get update && \
-    apt-get install -y --no-install-recommends rocm-dev hip-dev rocprim rocsparse rocthrust rocalution hipfft rocfft && \
+    apt-get install -y --no-install-recommends \
+        rocm-dev hip-dev \
+        rocprim rocsparse rocthrust rocalution hipfft rocfft \
+        hipblas rocblas hipify && \
     apt-get clean && \
     rm -rf /tmp/* /var/tmp/*
 
