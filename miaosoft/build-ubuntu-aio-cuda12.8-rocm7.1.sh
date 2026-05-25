@@ -43,9 +43,13 @@ docker run --rm \
     -e BUILD_DATE="${BUILD_DATE}" \
     -e COMMIT_ID="${COMMIT_ID}" \
     -e BUILD_TAG="${BUILD_TAG}" \
+    -e OUTPUT_ZIP="${OUTPUT_ZIP}" \
     llama-cpp-builder:cu12_rocm72_vk \
     bash -c "
         set -e
+        # Fix git ownership warning
+        git config --global --add safe.directory /workspace || true
+
         echo '=== Configuring build ==='
         export HIPCXX=\"\$(hipconfig -l)/clang\" && \
         export HIP_PATH=\"\$(hipconfig -R)\" && \
@@ -70,8 +74,8 @@ docker run --rm \
         echo ''
         echo '=== Packaging build artifacts ===' && \
         cd /workspace && \
-        rm -f output/\${OUTPUT_ZIP} && \
-        zip -r output/\${OUTPUT_ZIP} \
+        rm -f output/*.zip && \
+        zip -r \"output/\${OUTPUT_ZIP}\" \
             build_linux/bin/* \
             build_linux/lib/*.so* \
             -x '*_test*' \
@@ -80,10 +84,10 @@ docker run --rm \
 
         echo ''
         echo '=== Build complete! ===' && \
-        ls -lh output/\${OUTPUT_ZIP} && \
+        ls -lh \"output/\${OUTPUT_ZIP}\" && \
         echo '' && \
         echo 'Package contents:' && \
-        unzip -l output/\${OUTPUT_ZIP} | head -20
+        unzip -l \"output/\${OUTPUT_ZIP}\" | head -20
     "
 
 echo ""
