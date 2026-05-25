@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  builder:
+    build:
+      context: ..
+      dockerfile: miaosoft/Dockerfile.build
+    image: llama-cpp-builder:cu12_rocm72_vk
+    volumes:
+      - ..:/workspace
+    working_dir: /workspace
+    environment:
+      - BUILD_DATE=${BUILD_DATE:-}
+      - COMMIT_ID=${COMMIT_ID:-}
+      - BUILD_TAG=${BUILD_TAG:-}
+    command: bash

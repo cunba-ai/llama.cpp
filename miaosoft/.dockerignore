@@ -1,0 +1,65 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Build artifacts
+build_linux
+build
+cmake-build-*
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+*.md
+docs/
+LICENSE
+README*
+
+# Test files
+tests/
+*.test
+*_test.cpp
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Docker
+*.dockerfile
+docker-compose*.yml
+Dockerfile*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+*.bak
+
+# Output
+output/
+*.zip
+*.tar.gz
+*.7z

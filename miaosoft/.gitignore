@@ -1,0 +1,20 @@
+# Build outputs
+output/
+*.zip
+*.tar.gz
+*.7z
+
+# Build artifacts
+build_linux/
+build/
+cmake-build-*
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+
+# OS specific
+.DS_Store
+Thumbs.db
+*~

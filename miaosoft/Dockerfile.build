@@ -8,25 +8,35 @@ ENV HIP_PLATFORM=amd
 RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list && \
     sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
 
-# 前置依赖（官方要求）
+# 优化 apt 缓存：创建持久化缓存目录并配置 apt 缓存
+RUN mkdir -p /var/cache/apt/archives && \
+    echo 'Acquire::Languages "none";' > /etc/apt/apt.conf.d/99no-translations && \
+    echo 'Acquire::GzipIndexes "true";' > /etc/apt/apt.conf.d/99compress-indexes && \
+    echo 'Acquire::CompressionTypes::Order:: "gz";' >> /etc/apt/apt.conf.d/99compress-indexes && \
+    echo 'Dir::Cache::pkgcache "";' > /etc/apt/apt.conf.d/99clean-cache && \
+    echo 'Dir::Cache::srcpkgcache "";' >> /etc/apt/apt.conf.d/99clean-cache
+
+# 前置依赖（官方要求）- 合并为单层减少缓存失效
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ca-certificates \
     build-essential cmake git pkg-config \
     libstdc++-11-dev \
     python3-setuptools python3-wheel && \
-    rm -rf /var/lib/apt/lists/*
+    # 清理不必要的文件，但保留缓存目录
+    apt-get clean && \
+    rm -rf /tmp/* /var/tmp/* /var/doc/* /var/share/doc/*
 
-# Vulkan
+# 添加 Vulkan 密钥和源 - 单次 RUN 保持原子性
 RUN wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | \
     tee /etc/apt/trusted.gpg.d/lunarg.asc && \
     wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.4.313-jammy.list \
     https://packages.lunarg.com/vulkan/1.4.313/lunarg-vulkan-1.4.313-jammy.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends vulkan-sdk && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get clean && \
+    rm -rf /tmp/* /var/tmp/*
 
-# 添加 ROCm 7.2 官方仓库
-# 设置 APT 优先级（强制使用 ROCm 仓库的包，解决与系统自带包的冲突）
+# 添加 ROCm 7.2 官方仓库并安装
 RUN wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | \
     gpg --dearmor -o /usr/share/keyrings/rocm.gpg && \
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2 jammy main" \
@@ -35,11 +45,20 @@ RUN wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | \
     echo "Pin: origin repo.radeon.com" >> /etc/apt/preferences.d/rocm-pin && \
     echo "Pin-Priority: 1001" >> /etc/apt/preferences.d/rocm-pin && \
     apt-get update && \
-    apt-get install -y --no-install-recommends rocm && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends rocm-dev hip-dev rocprim rocsparse rocthrust rocalution hipfft rocfft && \
+    apt-get clean && \
+    rm -rf /tmp/* /var/tmp/*
 
-
+# 设置环境变量
 ENV PATH=${ROCM_PATH}/bin:${PATH} \
-    CMAKE_PREFIX_PATH=${ROCM_PATH}
+    CMAKE_PREFIX_PATH=${ROCM_PATH} \
+    HIPCCFLAGS="-fPIC"
 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+# 创建构建输出目录
+RUN mkdir -p /output
+
+# 设置工作目录
+WORKDIR /workspace
+
+# 默认命令
+CMD ["bash"]
