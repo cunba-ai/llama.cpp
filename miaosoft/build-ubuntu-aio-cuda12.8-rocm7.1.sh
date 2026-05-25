@@ -51,8 +51,6 @@ docker run --rm \
         git config --global --add safe.directory /workspace || true
 
         echo '=== Configuring build ==='
-        export HIPCXX=\"\$(hipconfig -l)/clang\" && \
-        export HIP_PATH=\"\$(hipconfig -R)\" && \
         rm -rf build_linux && mkdir -p build_linux && cd build_linux && \
         cmake .. \
             -DGGML_CUDA=ON \
