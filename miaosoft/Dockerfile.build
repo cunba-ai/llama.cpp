@@ -21,7 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ca-certificates \
     build-essential cmake git pkg-config \
     libstdc++-11-dev \
-    python3-setuptools python3-wheel && \
+    python3-setuptools python3-wheel \
+    zip unzip && \
     # 清理不必要的文件，但保留缓存目录
     apt-get clean && \
     rm -rf /tmp/* /var/tmp/* /var/doc/* /var/share/doc/*
@@ -53,9 +54,6 @@ RUN wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | \
 ENV PATH=${ROCM_PATH}/bin:${PATH} \
     CMAKE_PREFIX_PATH=${ROCM_PATH} \
     HIPCCFLAGS="-fPIC"
-
-# 创建构建输出目录
-RUN mkdir -p /output
 
 # 设置工作目录
 WORKDIR /workspace
