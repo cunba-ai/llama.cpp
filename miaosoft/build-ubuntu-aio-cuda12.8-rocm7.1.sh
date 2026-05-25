@@ -68,15 +68,16 @@ docker run --rm \
             -DAMDGPU_TARGETS='gfx1100;gfx1101;gfx1102;gfx1150;gfx1151;gfx1200;gfx1201' && \
 
         echo ''
-        echo '=== Building ===' && \
-        make -j\$(nproc) && \
+        echo '=== Building llama-cli and llama-server ===' && \
+        make -j\$(nproc) llama-cli llama-server && \
 
         echo ''
         echo '=== Packaging build artifacts ===' && \
         cd /workspace && \
         rm -f output/*.zip && \
         zip -r \"output/\${OUTPUT_ZIP}\" \
-            build_linux/bin/* \
+            build_linux/bin/llama-cli \
+            build_linux/bin/llama-server \
             build_linux/lib/*.so* \
             -x '*_test*' \
             -x '*_test.exe*' \
