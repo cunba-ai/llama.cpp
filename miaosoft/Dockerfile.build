@@ -1,0 +1,45 @@
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ROCM_PATH=/opt/rocm
+ENV HIP_PLATFORM=amd
+
+# 换国内镜像源
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list && \
+    sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
+
+# 前置依赖（官方要求）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget gnupg ca-certificates \
+    build-essential cmake git pkg-config \
+    libstdc++-11-dev \
+    python3-setuptools python3-wheel && \
+    rm -rf /var/lib/apt/lists/*
+
+# Vulkan
+RUN wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | \
+    tee /etc/apt/trusted.gpg.d/lunarg.asc && \
+    wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.4.313-jammy.list \
+    https://packages.lunarg.com/vulkan/1.4.313/lunarg-vulkan-1.4.313-jammy.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends vulkan-sdk && \
+    rm -rf /var/lib/apt/lists/*
+
+# 添加 ROCm 7.2 官方仓库
+# 设置 APT 优先级（强制使用 ROCm 仓库的包，解决与系统自带包的冲突）
+RUN wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | \
+    gpg --dearmor -o /usr/share/keyrings/rocm.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2 jammy main" \
+    > /etc/apt/sources.list.d/rocm.list && \
+    echo "Package: *" > /etc/apt/preferences.d/rocm-pin && \
+    echo "Pin: origin repo.radeon.com" >> /etc/apt/preferences.d/rocm-pin && \
+    echo "Pin-Priority: 1001" >> /etc/apt/preferences.d/rocm-pin && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends rocm && \
+    rm -rf /var/lib/apt/lists/*
+
+
+ENV PATH=${ROCM_PATH}/bin:${PATH} \
+    CMAKE_PREFIX_PATH=${ROCM_PATH}
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
