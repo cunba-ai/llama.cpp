@@ -67,11 +67,6 @@ build:windows:
       .\ossutil64.exe config -e $OSS_ENDPOINT -i $OSS_ACCESS_KEY_ID -k $OSS_ACCESS_KEY_SECRET -L CH -c .\ossutilconfig
       .\ossutil64.exe -c .\ossutilconfig cp $zipFile.FullName "oss://$BUCKET_NAME/$ossKey" -f
       Write-Host "Uploaded to: oss://$BUCKET_NAME/$ossKey"
-  artifacts:
-    name: "llama.cpp-windows-$CI_COMMIT_SHORT_SHA"
-    paths:
-      - output/*.zip
-    expire_in: 30 days
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
       when: always
@@ -129,11 +124,6 @@ build:linux:
       ./ossutil-v1.7.18-linux-amd64/ossutil64 config -e ${OSS_ENDPOINT} -i ${OSS_ACCESS_KEY_ID} -k ${OSS_ACCESS_KEY_SECRET} -L CH -c /tmp/ossutilconfig
       ./ossutil-v1.7.18-linux-amd64/ossutil64 -c /tmp/ossutilconfig cp "output/${OUTPUT_ZIP}" "oss://${BUCKET_NAME}/${OSS_PATH}/${OUTPUT_ZIP}" -f
       echo "Uploaded to: oss://${BUCKET_NAME}/${OSS_PATH}/${OUTPUT_ZIP}"
-  artifacts:
-    name: "llama.cpp-linux-$CI_COMMIT_SHORT_SHA"
-    paths:
-      - output/*.zip
-    expire_in: 30 days
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
       when: always
