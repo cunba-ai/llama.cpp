@@ -73,7 +73,8 @@ cmake -B build-win ^
   -DGGML_NATIVE=OFF ^
   -DGGML_CCACHE=ON ^
   -DCMAKE_BUILD_TYPE=Release ^
-  -DGPU_TARGETS="%AMDGPU_ARCHS%"
+  -DGPU_TARGETS="%AMDGPU_ARCHS%" ^
+  -DLLAMA_BUILD_UI=OFF
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] CMake configuration failed!
