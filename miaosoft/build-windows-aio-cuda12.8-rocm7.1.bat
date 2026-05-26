@@ -84,7 +84,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 :: Build
 echo [INFO] Building Release configuration...
-cmake --build build-win --config Release -j %NUMBER_OF_PROCESSORS% --target llama-cli llama-server 2>NUL
+cmake --build build-win --config Release -j %NUMBER_OF_PROCESSORS% --target llama-cli llama-server 1>NUL
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Build failed!
