@@ -64,9 +64,9 @@ build:windows:
     # 上传到 OSS
     - |
       $zipFile = Get-ChildItem "output\*.zip" | Select-Object -First 1
-      $ossKey = "$OSS_PATH/$zipFile.Name"
+      $ossKey = "$OSS_PATH/$($zipFile.Name)"
       .\ossutil64.exe config -e $OSS_ENDPOINT -i $OSS_ACCESS_KEY_ID -k $OSS_ACCESS_KEY_SECRET -L CH -c .\ossutilconfig
-      .\ossutil64.exe -c .\ossutilconfig cp $zipFile.FullName "oss://$BUCKET_NAME/$ossKey" -f
+      .\ossutil64.exe -c .\ossutilconfig cp "$($zipFile.FullName)" "oss://$BUCKET_NAME/$ossKey" -f
       Write-Host "Uploaded to: oss://$BUCKET_NAME/$ossKey"
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
