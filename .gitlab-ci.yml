@@ -86,7 +86,7 @@ build:linux:
     - 4090ubuntudocker
   image: llama-cpp-builder:cu12_rocm72_vk
   cache:
-    key: linux-build
+    key: linux-build-v2
     paths:
       - build_linux/
       - ossutil-cache/
