@@ -1,6 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+:: Change to project root (parent of script directory)
+cd /d "%~dp0.."
+
 echo ========================================
 echo llama.cpp Build Script - CUDA 12.8 + ROCm 7.1
 echo ========================================
