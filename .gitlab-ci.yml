@@ -109,9 +109,7 @@ build:linux:
     - cd "${CI_PROJECT_DIR}" && mkdir -p output
     - |
       zip -r "output/${OUTPUT_ZIP}" \
-          build_linux/bin/llama-cli \
-          build_linux/bin/llama-server \
-          build_linux/lib/*.so* \
+          build_linux/bin/ \
           -x '*_test*' -x '*.a'
     - ls -lh "output/${OUTPUT_ZIP}"
     # 下载 ossutil64 并上传到 OSS
