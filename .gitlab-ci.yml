@@ -40,6 +40,7 @@ build:windows:
     key: windows-build
     paths:
       - build-win/
+      - ossutil64.exe
   script:
     # 调用 bat 编译
     - cmd /c "miaosoft\build-windows-aio-cuda12.8-rocm7.1.bat"
@@ -88,11 +89,22 @@ build:linux:
     key: linux-build
     paths:
       - build_linux/
+      - ossutil-cache/
+  before_script:
+    - |
+      if [ ! -f ossutil-cache/ossutil64 ]; then
+        mkdir -p ossutil-cache
+        wget -q https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil-v1.7.18-linux-amd64.zip -O /tmp/ossutil.zip
+        unzip -o /tmp/ossutil.zip -d /tmp/
+        cp /tmp/ossutil-v1.7.18-linux-amd64/ossutil64 ossutil-cache/ossutil64
+        chmod +x ossutil-cache/ossutil64
+      fi
   script:
     - export BUILD_DATE=$(date +%Y%m%d)
     - export COMMIT_ID=$(git rev-parse --short HEAD)
     - export BUILD_TAG="llama.cpp-linux-${BUILD_DATE}-${COMMIT_ID}"
     - export OUTPUT_ZIP="${BUILD_TAG}.zip"
+    - export OSSUTIL="${CI_PROJECT_DIR}/ossutil-cache/ossutil64"
     # 编译（增量构建）
     - mkdir -p build_linux && cd build_linux
     - |
@@ -116,13 +128,10 @@ build:linux:
           build_linux/bin/ \
           -x '*_test*' -x '*.a'
     - ls -lh "output/${OUTPUT_ZIP}"
-    # 下载 ossutil64 并上传到 OSS
+    # 上传到 OSS
     - |
-      wget -q https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil-v1.7.18-linux-amd64.zip -O ossutil.zip
-      unzip -o ossutil.zip
-      chmod +x ossutil-v1.7.18-linux-amd64/ossutil64
-      ./ossutil-v1.7.18-linux-amd64/ossutil64 config -e ${OSS_ENDPOINT} -i ${OSS_ACCESS_KEY_ID} -k ${OSS_ACCESS_KEY_SECRET} -L CH -c /tmp/ossutilconfig
-      ./ossutil-v1.7.18-linux-amd64/ossutil64 -c /tmp/ossutilconfig cp "output/${OUTPUT_ZIP}" "oss://${BUCKET_NAME}/${OSS_PATH}/${OUTPUT_ZIP}" -f
+      ${OSSUTIL} config -e ${OSS_ENDPOINT} -i ${OSS_ACCESS_KEY_ID} -k ${OSS_ACCESS_KEY_SECRET} -L CH -c /tmp/ossutilconfig
+      ${OSSUTIL} -c /tmp/ossutilconfig cp "output/${OUTPUT_ZIP}" "oss://${BUCKET_NAME}/${OSS_PATH}/${OUTPUT_ZIP}" -f
       echo "Uploaded to: oss://${BUCKET_NAME}/${OSS_PATH}/${OUTPUT_ZIP}"
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
