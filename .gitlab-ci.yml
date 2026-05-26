@@ -1,0 +1,137 @@
+stages:
+  - prepare
+  - build
+
+variables:
+  CUDA_ARCHS: "60;61;70;75;80;86;89;90"
+  AMDGPU_ARCHS: "gfx1100;gfx1101;gfx1102;gfx1150;gfx1151;gfx1200;gfx1201"
+  OSS_ENDPOINT: "oss-cn-shanghai.aliyuncs.com"
+  OSS_PATH: "llama.cpp"
+  GIT_DEPTH: 20
+  GIT_STRATEGY: fetch
+
+# ──────────────────────────────────────────────
+# Docker 镜像重建（仅 Dockerfile.build 变更时触发）
+# ──────────────────────────────────────────────
+rebuild:docker-image:
+  stage: prepare
+  tags:
+    - 4090ubuntudocker
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  script:
+    - docker build -t llama-cpp-builder:cu12_rocm72_vk -f miaosoft/Dockerfile.build .
+    - echo "Docker image rebuilt successfully"
+  rules:
+    - changes:
+        - miaosoft/Dockerfile.build
+      if: $CI_COMMIT_BRANCH == "master"
+      when: always
+
+# ──────────────────────────────────────────────
+# Windows Build (PowerShell)
+# ──────────────────────────────────────────────
+build:windows:
+  stage: build
+  tags:
+    - 4090windows
+  script:
+    # 调用 bat 编译
+    - cmd /c "miaosoft\build-windows-aio-cuda12.8-rocm7.1.bat"
+    # 打包 ZIP
+    - |
+      $commitId = git rev-parse --short HEAD
+      $buildDate = Get-Date -Format "yyyyMMdd"
+      $buildTag = "llama.cpp-windows-$buildDate-$commitId"
+      New-Item -ItemType Directory -Force -Path output
+      Compress-Archive -Path ".\build-win\bin\*" `
+        -DestinationPath "output\$buildTag.zip" `
+        -Force
+      Write-Host "Created: output\$buildTag.zip"
+    # 下载 ossutil64 (Windows 版)
+    - |
+      if (-not (Test-Path "ossutil64.exe")) {
+        Invoke-WebRequest -Uri "https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil-v1.7.18-windows-amd64.zip" -OutFile "ossutil.zip"
+        Expand-Archive -Path "ossutil.zip" -DestinationPath "." -Force
+        Copy-Item "ossutil-v1.7.18-windows-amd64\ossutil64.exe" "." -Force
+      }
+    # 上传到 OSS
+    - |
+      $zipFile = Get-ChildItem "output\*.zip" | Select-Object -First 1
+      $ossKey = "$OSS_PATH/$zipFile.Name"
+      .\ossutil64.exe config -e $OSS_ENDPOINT -i $OSS_ACCESS_KEY_ID -k $OSS_ACCESS_KEY_SECRET -L CH -c .\ossutilconfig
+      .\ossutil64.exe -c .\ossutilconfig cp $zipFile.FullName "oss://$BUCKET_NAME/$ossKey" -f
+      Write-Host "Uploaded to: oss://$BUCKET_NAME/$ossKey"
+  artifacts:
+    name: "llama.cpp-windows-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - output/*.zip
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: always
+    - if: $CI_COMMIT_BRANCH == "master"
+      when: on_success
+    - if: $CI_COMMIT_BRANCH =~ /^feat\//
+      when: manual
+  retry: 1
+
+# ──────────────────────────────────────────────
+# Linux Build (Docker executor)
+# ──────────────────────────────────────────────
+build:linux:
+  stage: build
+  tags:
+    - 4090ubuntudocker
+  image: llama-cpp-builder:cu12_rocm72_vk
+  script:
+    - export BUILD_DATE=$(date +%Y%m%d)
+    - export COMMIT_ID=$(git rev-parse --short HEAD)
+    - export BUILD_TAG="llama.cpp-linux-${BUILD_DATE}-${COMMIT_ID}"
+    - export OUTPUT_ZIP="${BUILD_TAG}.zip"
+    # 编译
+    - rm -rf build_linux && mkdir -p build_linux && cd build_linux
+    - |
+      cmake .. \
+        -DGGML_CUDA=ON \
+        -DGGML_VULKAN=ON \
+        -DGGML_HIP=ON \
+        -DGGML_BACKEND_DL=ON \
+        -DBUILD_SHARED_LIBS=ON \
+        -DGGML_NATIVE=OFF \
+        -DGGML_CCACHE=ON \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DGGML_CPU_ALL_VARIANTS=OFF \
+        -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+        -DAMDGPU_TARGETS="${AMDGPU_ARCHS}"
+    - make -j$(nproc) llama-cli llama-server
+    # 打包
+    - cd "${CI_PROJECT_DIR}" && mkdir -p output
+    - |
+      zip -r "output/${OUTPUT_ZIP}" \
+          build_linux/bin/llama-cli \
+          build_linux/bin/llama-server \
+          build_linux/lib/*.so* \
+          -x '*_test*' -x '*.a'
+    - ls -lh "output/${OUTPUT_ZIP}"
+    # 下载 ossutil64 并上传到 OSS
+    - |
+      wget -q https://gosspublic.alicdn.com/ossutil/1.7.18/ossutil-v1.7.18-linux-amd64.zip -O ossutil.zip
+      unzip -o ossutil.zip
+      chmod +x ossutil-v1.7.18-linux-amd64/ossutil64
+      ./ossutil-v1.7.18-linux-amd64/ossutil64 config -e ${OSS_ENDPOINT} -i ${OSS_ACCESS_KEY_ID} -k ${OSS_ACCESS_KEY_SECRET} -L CH -c /tmp/ossutilconfig
+      ./ossutil-v1.7.18-linux-amd64/ossutil64 -c /tmp/ossutilconfig cp "output/${OUTPUT_ZIP}" "oss://${BUCKET_NAME}/${OSS_PATH}/${OUTPUT_ZIP}" -f
+      echo "Uploaded to: oss://${BUCKET_NAME}/${OSS_PATH}/${OUTPUT_ZIP}"
+  artifacts:
+    name: "llama.cpp-linux-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - output/*.zip
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: always
+    - if: $CI_COMMIT_BRANCH == "master"
+      when: on_success
+    - if: $CI_COMMIT_BRANCH =~ /^feat\//
+      when: manual
+  retry: 1
