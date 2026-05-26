@@ -50,10 +50,9 @@ echo CUDA  : %CUDA_12_PATH%
 echo AMD   : %AMDGPU_ARCHS% (ROCm 7.1 Windows)
 echo ========================================
 
-:: Clean previous build
-if exist build-win (
-    echo [INFO] Cleaning old build directory...
-    rmdir /s /q build-win
+:: Incremental build: reconfigure only if needed
+if not exist build-win (
+    echo [INFO] No previous build found, will configure from scratch.
 )
 
 :: CMake configure using Visual Studio generator with HIP platform
@@ -61,7 +60,7 @@ echo [INFO] Configuring CMake for Visual Studio + HIP...
 cmake -B build-win ^
   -G "Ninja" ^
   -DCMAKE_CUDA_COMPILER="%CUDA_12_PATH%/bin/nvcc.exe" ^
-  -DCMAKE_CUDA_FLAGS="-Wno-deprecated-gpu-targets" ^
+  -DCMAKE_CUDA_FLAGS="-Wno-deprecated-gpu-targets -w" ^
   -DCUDAToolkit_ROOT="%CUDA_12_PATH%" ^
   -DCMAKE_CUDA_ARCHITECTURES="60;61;70;75;80;86;89;90" ^
   -DCMAKE_C_COMPILER=clang-cl ^

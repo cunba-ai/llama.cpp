@@ -36,6 +36,10 @@ build:windows:
   stage: build
   tags:
     - 4090windows
+  cache:
+    key: windows-build
+    paths:
+      - build-win/
   script:
     # 调用 bat 编译
     - cmd /c "miaosoft\build-windows-aio-cuda12.8-rocm7.1.bat"
@@ -85,13 +89,17 @@ build:linux:
   tags:
     - 4090ubuntudocker
   image: llama-cpp-builder:cu12_rocm72_vk
+  cache:
+    key: linux-build
+    paths:
+      - build_linux/
   script:
     - export BUILD_DATE=$(date +%Y%m%d)
     - export COMMIT_ID=$(git rev-parse --short HEAD)
     - export BUILD_TAG="llama.cpp-linux-${BUILD_DATE}-${COMMIT_ID}"
     - export OUTPUT_ZIP="${BUILD_TAG}.zip"
-    # 编译
-    - rm -rf build_linux && mkdir -p build_linux && cd build_linux
+    # 编译（增量构建）
+    - mkdir -p build_linux && cd build_linux
     - |
       cmake .. \
         -DGGML_CUDA=ON \
