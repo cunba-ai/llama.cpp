@@ -67,8 +67,13 @@ build:windows:
       $zipFile = Get-ChildItem "output\*.zip" | Select-Object -First 1
       $ossKey = "$OSS_PATH/$($zipFile.Name)"
       .\ossutil64.exe config -e $OSS_ENDPOINT -i $OSS_ACCESS_KEY_ID -k $OSS_ACCESS_KEY_SECRET -L CH -c .\ossutilconfig
+      # Upload versioned copy
       .\ossutil64.exe -c .\ossutilconfig cp "$($zipFile.FullName)" "oss://$BUCKET_NAME/$ossKey" -f
+      # Upload latest copy (without date and commit)
+      .\ossutil64.exe -c .\ossutilconfig mkdir "oss://$BUCKET_NAME/$OSS_PATH/latest" -h
+      .\ossutil64.exe -c .\ossutilconfig cp "$($zipFile.FullName)" "oss://$BUCKET_NAME/$OSS_PATH/latest/llama.cpp-windows.zip" -f
       Write-Host "Uploaded to: oss://$BUCKET_NAME/$ossKey"
+      Write-Host "Latest:      oss://$BUCKET_NAME/$OSS_PATH/latest/llama.cpp-windows.zip"
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
       when: always
@@ -133,8 +138,13 @@ build:linux:
     # 上传到 OSS
     - |
       ${OSSUTIL} config -e ${OSS_ENDPOINT} -i ${OSS_ACCESS_KEY_ID} -k ${OSS_ACCESS_KEY_SECRET} -L CH -c /tmp/ossutilconfig
+      # Upload versioned copy
       ${OSSUTIL} -c /tmp/ossutilconfig cp "output/${OUTPUT_ZIP}" "oss://${BUCKET_NAME}/${OSS_PATH}/${OUTPUT_ZIP}" -f
+      # Upload latest copy (without date and commit)
+      ${OSSUTIL} -c /tmp/ossutilconfig mkdir "oss://${BUCKET_NAME}/${OSS_PATH}/latest" -h
+      ${OSSUTIL} -c /tmp/ossutilconfig cp "output/${OUTPUT_ZIP}" "oss://${BUCKET_NAME}/${OSS_PATH}/latest/llama.cpp-linux.zip" -f
       echo "Uploaded to: oss://${BUCKET_NAME}/${OSS_PATH}/${OUTPUT_ZIP}"
+      echo "Latest:      oss://${BUCKET_NAME}/${OSS_PATH}/latest/llama.cpp-linux.zip"
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
       when: always
