@@ -20,14 +20,15 @@ rebuild:docker-image:
     - 4090ubuntudocker
   variables:
     DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: unix:///var/run/docker.sock
   script:
     - docker build -t llama-cpp-builder:cu12_rocm72_vk -f miaosoft/Dockerfile.build .
     - echo "Docker image rebuilt successfully"
   rules:
-    - changes:
+    - if: $CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push"
+      changes:
         - miaosoft/Dockerfile.build
-      if: $CI_COMMIT_BRANCH == "master"
-      when: always
+      when: on_success
 
 # ──────────────────────────────────────────────
 # Windows Build (PowerShell)
