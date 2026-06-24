@@ -36,10 +36,9 @@ if "%~1"=="--gpu_vendor" (
     goto parse_args
 )
 
-:: fallback: treat as positional prefix
-if "!PREFIX!"=="" set "PREFIX=%~1"
-shift
-goto parse_args
+echo error: unknown option: %~1
+echo try install.bat --help
+exit /b 1
 
 :args_done
 
@@ -54,12 +53,14 @@ goto parse_args
 
 set "SRC_DIR=%~dp0"
 if "%SRC_DIR:~-1%"=="\" set "SRC_DIR=%SRC_DIR:~0,-1%"
+if not exist "%SRC_DIR%\VERSION" if exist "%CD%\VERSION" set "SRC_DIR=%CD%"
 
 :: ----------------------------------------------------------
 ::  read version from VERSION file
 :: ----------------------------------------------------------
 if not exist "%SRC_DIR%\VERSION" (
-    echo error: VERSION file not found in %SRC_DIR%
+    echo error: VERSION file not found in %SRC_DIR%.
+    echo tip: Running from PowerShell? Try: cmd /c ".\install.bat --prefix=..."
     exit /b 1
 )
 set /p VERSION=<"%SRC_DIR%\VERSION"
@@ -73,6 +74,11 @@ if "%VERSION%"=="" (
 :: ----------------------------------------------------------
 if "%PREFIX%"=="" (
     echo error: --prefix is required
+    echo try install.bat --help
+    exit /b 1
+)
+if "%GPU_VENDOR%"=="" (
+    echo error: --gpu_vendor is required
     echo try install.bat --help
     exit /b 1
 )

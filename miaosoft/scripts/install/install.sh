@@ -5,7 +5,7 @@ set -e
 #  llama.cpp linux install script
 #  reads version from VERSION file in the same directory
 #  copies build_linux/bin/* to $PREFIX/engine/llama-cpp-linux/{gpu_vendor}/{version}
-#  if --gpu_vendor is set, writes env vars to
+#  writes env vars to
 #    $PREFIX/env/llama/{gpu_vendor}/VERSION   (version number)
 #    $PREFIX/env/llama/{gpu_vendor}/{version}  (env variables)
 # ============================================================
@@ -47,21 +47,20 @@ while [ $# -gt 0 ]; do
   Copies build_linux/bin/* to the engine folder.
 
   USAGE:
-    ./install.sh --prefix=PATH
+    ./install.sh --prefix=PATH --gpu_vendor=VENDOR
 
   OPTIONS:
     --prefix=PATH           Installation root directory (required)
-    --gpu_vendor=VENDOR     GPU vendor name for GPU selection (optional)
+    --gpu_vendor=VENDOR     GPU vendor name for GPU selection (required)
 
   FILES INSTALLED TO:
     {PREFIX}/engine/llama-cpp-linux/{gpu_vendor}/{version}/
 
-  IF --gpu_vendor is set, environment variables are written to:
+  ENVIRONMENT VARIABLES WRITTEN TO {PREFIX}/env/llama/{gpu_vendor}:
     {PREFIX}/env/llama/{gpu_vendor}/VERSION      (version number)
     {PREFIX}/env/llama/{gpu_vendor}/{version}     (env variables)
 
   EXAMPLES:
-    ./install.sh --prefix=/opt/istation
     ./install.sh --prefix=/opt/istation --gpu_vendor=nvidia
     ./install.sh --help
 ===============================================================
@@ -85,44 +84,45 @@ if [ -z "$PREFIX" ]; then
     echo "try ./install.sh --help"
     exit 1
 fi
+if [ -z "$GPU_VENDOR" ]; then
+    echo "error: --gpu_vendor is required"
+    echo "try ./install.sh --help"
+    exit 1
+fi
 
 ISTATION_HOME="$PREFIX"
 ENGINE_DIR="$ISTATION_HOME/engine"
 
 # ----------------------------------------------------------
-#  write env variables if gpu_vendor is set
+#  write env variables
 # ----------------------------------------------------------
-if [ -n "$GPU_VENDOR" ]; then
-    TARGET_DIR="$ENGINE_DIR/llama-cpp-linux/$GPU_VENDOR/$VERSION"
-    STARTUP_CLI="$TARGET_DIR/llama-cli"
-    STARTUP_SERVER="$TARGET_DIR/llama-server"
+TARGET_DIR="$ENGINE_DIR/llama-cpp-linux/$GPU_VENDOR/$VERSION"
+STARTUP_CLI="$TARGET_DIR/llama-cli"
+STARTUP_SERVER="$TARGET_DIR/llama-server"
 
-    GPU_VENDOR_DIR="$ISTATION_HOME/env/llama/$GPU_VENDOR"
-    mkdir -p "$GPU_VENDOR_DIR"
+GPU_VENDOR_DIR="$ISTATION_HOME/env/llama/$GPU_VENDOR"
+mkdir -p "$GPU_VENDOR_DIR"
 
-    # VERSION file: version number only
-    echo "$VERSION" > "$GPU_VENDOR_DIR/VERSION"
-    echo "[write] $GPU_VENDOR_DIR/VERSION"
+# VERSION file: version number only
+echo "$VERSION" > "$GPU_VENDOR_DIR/VERSION"
+echo "[write] $GPU_VENDOR_DIR/VERSION"
 
-    # {version} file: env variables
-    ENV_FILE="$GPU_VENDOR_DIR/$VERSION"
+# {version} file: env variables
+ENV_FILE="$GPU_VENDOR_DIR/$VERSION"
 
-    set_env() {
-        local key="$1"
-        local value="$2"
-        echo "[setenv] $key=$value"
-        if [ -f "$ENV_FILE" ]; then
-            sed -i "/^$key=/d" "$ENV_FILE"
-        fi
-        echo "$key=\"$value\"" >> "$ENV_FILE"
-    }
+set_env() {
+    local key="$1"
+    local value="$2"
+    echo "[setenv] $key=$value"
+    if [ -f "$ENV_FILE" ]; then
+        sed -i "/^$key=/d" "$ENV_FILE"
+    fi
+    echo "$key=\"$value\"" >> "$ENV_FILE"
+}
 
-    set_env ISTATION_HOME "$ISTATION_HOME"
-    set_env ISTATION_ENGINE_LLAMA_CLI_STARTUP "$STARTUP_CLI"
-    set_env ISTATION_ENGINE_LLAMA_SERVER_STARTUP "$STARTUP_SERVER"
-else
-    TARGET_DIR="$ENGINE_DIR/llama-cpp-linux/$VERSION"
-fi
+set_env ISTATION_HOME "$ISTATION_HOME"
+set_env ISTATION_ENGINE_LLAMA_CLI_STARTUP "$STARTUP_CLI"
+set_env ISTATION_ENGINE_LLAMA_SERVER_STARTUP "$STARTUP_SERVER"
 
 # ----------------------------------------------------------
 #  create target directory and copy files
