@@ -3,6 +3,7 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 set "PREFIX="
+set "GPU_VENDOR="
 
 :parse_args
 if "%~1"=="" goto args_done
@@ -22,6 +23,18 @@ if "!ARG:~0,9!"=="--prefix=" (
     shift
     goto parse_args
 )
+set "ARG=%~1"
+if "!ARG:~0,13!"=="--gpu_vendor=" (
+    set "GPU_VENDOR=!ARG:~13!"
+    shift
+    goto parse_args
+)
+if "%~1"=="--gpu_vendor" (
+    set "GPU_VENDOR=%~2"
+    shift
+    shift
+    goto parse_args
+)
 
 echo error: unknown option: %~1
 echo try install.bat --help
@@ -30,19 +43,24 @@ exit /b 1
 :args_done
 
 :: ============================================================
-::  istation-gateway windows install script
+::  llama.cpp windows install script
 ::  reads version from VERSION file in the same directory
-::  copies exe to %PREFIX%\gateway\istation-gateway-windows-x86_64-{version}
-::  sets ISTATION_GATEWAY_STARTUP in %PREFIX%\env\istation_gateway
+::  copies all files from current dir to target engine directory
+::  if --gpu_vendor is set, writes env vars to
+::    %PREFIX%\env\llama\{gpu_vendor}\VERSION   (version number)
+::    %PREFIX%\env\llama\{gpu_vendor}\{version}  (env variables)
 :: ============================================================
 
 set "SRC_DIR=%~dp0"
 if "%SRC_DIR:~-1%"=="\" set "SRC_DIR=%SRC_DIR:~0,-1%"
-
-:: fallback: %~dp0 can be unreliable (e.g. PowerShell), try %CD%
 if not exist "%SRC_DIR%\VERSION" if exist "%CD%\VERSION" set "SRC_DIR=%CD%"
+
+:: ----------------------------------------------------------
+::  read version from VERSION file
+:: ----------------------------------------------------------
 if not exist "%SRC_DIR%\VERSION" (
-    echo error: VERSION file not found in %SRC_DIR%
+    echo error: VERSION file not found in %SRC_DIR%.
+    echo tip: Running from PowerShell? Try: cmd /c ".\install.bat --prefix=..."
     exit /b 1
 )
 set /p VERSION=<"%SRC_DIR%\VERSION"
@@ -59,45 +77,51 @@ if "%PREFIX%"=="" (
     echo try install.bat --help
     exit /b 1
 )
+if "%GPU_VENDOR%"=="" (
+    echo error: --gpu_vendor is required
+    echo try install.bat --help
+    exit /b 1
+)
 
-set "SUB_DIR=istation-gateway-windows-x86_64-%VERSION%"
 set "ISTATION_HOME=%PREFIX%"
-
-set "GATEWAY_DIR=%ISTATION_HOME%\gateway"
-set "TARGET_DIR=%GATEWAY_DIR%\%SUB_DIR%"
-if "%TARGET_DIR:~-1%"=="\" set "TARGET_DIR=%TARGET_DIR:~0,-1%"
+set "ENGINE_DIR=%ISTATION_HOME%\engine"
 
 :: ----------------------------------------------------------
-::  discover startup executable name (single exe in package)
+::  write env variables if gpu_vendor is set
 :: ----------------------------------------------------------
-set "STARTUP="
-for %%f in ("%SRC_DIR%\*") do (
-    if /i not "%%~nxf"=="install.bat" if /i not "%%~nxf"=="VERSION" if "!STARTUP!"=="" set "STARTUP=%%~nxf"
+if not "%GPU_VENDOR%"=="" (
+    set "TARGET_DIR=%ENGINE_DIR%\llama-cpp\%GPU_VENDOR%\%VERSION%"
+    set "STARTUP_CLI=!TARGET_DIR!\llama-cli.exe"
+    set "STARTUP_SERVER=!TARGET_DIR!\llama-server.exe"
+
+    set "GPU_VENDOR_DIR=%ISTATION_HOME%\env\llama\%GPU_VENDOR%"
+    if not exist "!GPU_VENDOR_DIR!" mkdir "!GPU_VENDOR_DIR!"
+
+    :: VERSION file: version number only
+    echo !VERSION! > "!GPU_VENDOR_DIR!\VERSION"
+    echo [write] !GPU_VENDOR_DIR!\VERSION
+
+    :: {version} file: env variables
+    set "ENV_FILE=!GPU_VENDOR_DIR!\!VERSION!"
+    echo [setenv] ISTATION_HOME=!ISTATION_HOME!
+    echo [setenv] ISTATION_ENGINE_LLAMA_CLI_STARTUP=!STARTUP_CLI!
+    echo [setenv] ISTATION_ENGINE_LLAMA_SERVER_STARTUP=!STARTUP_SERVER!
+
+    set "TEMP_FILE=%TEMP%\env_tmp_%RANDOM%.txt"
+    if exist "!ENV_FILE!" (
+        findstr /v /b "ISTATION_HOME= ISTATION_ENGINE_LLAMA_CLI_STARTUP= ISTATION_ENGINE_LLAMA_SERVER_STARTUP=" "!ENV_FILE!" > "!TEMP_FILE!" 2>nul
+        move /y "!TEMP_FILE!" "!ENV_FILE!" >nul
+    )
+    echo ISTATION_HOME="!ISTATION_HOME!" >> "!ENV_FILE!"
+    echo ISTATION_ENGINE_LLAMA_CLI_STARTUP="!STARTUP_CLI!" >> "!ENV_FILE!"
+    echo ISTATION_ENGINE_LLAMA_SERVER_STARTUP="!STARTUP_SERVER!" >> "!ENV_FILE!"
+    if exist "!TEMP_FILE!" del /f /q "!TEMP_FILE!" 2>nul
+) else (
+    set "TARGET_DIR=%ENGINE_DIR%\llama-cpp\%VERSION%"
 )
-set "STARTUP=%TARGET_DIR%\%STARTUP%"
 
 :: ----------------------------------------------------------
-::  persist environment variables to env file
-:: ----------------------------------------------------------
-set "ENV_FILE=%ISTATION_HOME%\env\istation_gateway"
-for %%d in ("%ENV_FILE%\..") do (
-    if not exist "%%~fd" mkdir "%%~fd"
-)
-
-echo [setenv] ISTATION_HOME=%ISTATION_HOME%
-echo [setenv] ISTATION_GATEWAY_STARTUP=%STARTUP%
-
-set "TEMP_FILE=%TEMP%\env_tmp_%RANDOM%.txt"
-if exist "%ENV_FILE%" (
-    findstr /v /b "ISTATION_HOME= ISTATION_GATEWAY_STARTUP=" "%ENV_FILE%" > "%TEMP_FILE%" 2>nul
-    move /y "%TEMP_FILE%" "%ENV_FILE%" >nul
-)
-echo ISTATION_HOME="%ISTATION_HOME%" >> "%ENV_FILE%"
-echo ISTATION_GATEWAY_STARTUP="%STARTUP%" >> "%ENV_FILE%"
-if exist "%TEMP_FILE%" del /f /q "%TEMP_FILE%" 2>nul
-
-:: ----------------------------------------------------------
-::  create target directory and copy exe
+::  create target directory and copy all files
 :: ----------------------------------------------------------
 if not exist "%TARGET_DIR%" (
     echo [mkdir] %TARGET_DIR%
@@ -123,27 +147,29 @@ exit /b 0
 
 :help
 echo ===============================================================
-echo   istation-gateway Windows Install Script
+echo   llama.cpp Windows Install Script
 echo ===============================================================
 echo.
 echo   Reads version from VERSION file in script directory.
-echo   Copies gateway executable to the gateway folder.
+echo   Copies all files from this directory to the engine folder.
 echo.
 echo   USAGE:
 echo     install.bat --prefix=PATH
 echo.
 echo   OPTIONS:
 echo     --prefix=PATH           Installation root directory (required)
+echo     --gpu_vendor=VENDOR     GPU vendor name for GPU selection (optional)
 echo.
 echo   FILES INSTALLED TO:
-echo     {PREFIX}\gateway\istation-gateway-windows-x86_64-{version}\
+echo     {PREFIX}\engine\llama-cpp\{gpu_vendor}\{version}\
 echo.
-echo   ENVIRONMENT VARIABLES WRITTEN TO {PREFIX}\env\istation_gateway:
-echo     ISTATION_HOME
-echo     ISTATION_GATEWAY_STARTUP
+echo   IF --gpu_vendor is set, environment variables are written to:
+echo     {PREFIX}\env\llama\{gpu_vendor}\VERSION      (version number)
+echo     {PREFIX}\env\llama\{gpu_vendor}\{version}     (env variables)
 echo.
 echo   EXAMPLES:
 echo     install.bat --prefix=D:\istation
+echo     install.bat --prefix=D:\istation --gpu_vendor=nvidia
 echo     install.bat --help
 echo ===============================================================
 exit /b 0

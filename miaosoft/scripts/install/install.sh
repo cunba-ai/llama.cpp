@@ -2,10 +2,12 @@
 set -e
 
 # ============================================================
-#  istation-gateway linux install script
+#  llama.cpp linux install script
 #  reads version from VERSION file in the same directory
-#  copies binary to $PREFIX/gateway/istation-gateway-linux-x86_64-{version}
-#  sets ISTATION_HOME and startup variables in $PREFIX/env/istation_gateway
+#  copies build_linux/bin/* to $PREFIX/engine/llama-cpp-linux/{gpu_vendor}/{version}
+#  writes env vars to
+#    $PREFIX/env/llama/{gpu_vendor}/VERSION   (version number)
+#    $PREFIX/env/llama/{gpu_vendor}/{version}  (env variables)
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -27,35 +29,39 @@ fi
 #  parse arguments
 # ----------------------------------------------------------
 PREFIX=""
+GPU_VENDOR=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --prefix=*)  PREFIX="${1#*=}" ;;
         --prefix)    PREFIX="$2"; shift ;;
+        --gpu_vendor=*) GPU_VENDOR="${1#*=}" ;;
+        --gpu_vendor)   GPU_VENDOR="$2"; shift ;;
         --help|-h)
             cat << 'HELP'
 ===============================================================
-  istation-gateway Linux Install Script
+  llama.cpp Linux Install Script
 ===============================================================
 
   Reads version from VERSION file in script directory.
-  Copies gateway binary to the gateway folder.
+  Copies build_linux/bin/* to the engine folder.
 
   USAGE:
-    ./install.sh --prefix=PATH
+    ./install.sh --prefix=PATH --gpu_vendor=VENDOR
 
   OPTIONS:
     --prefix=PATH           Installation root directory (required)
+    --gpu_vendor=VENDOR     GPU vendor name for GPU selection (required)
 
   FILES INSTALLED TO:
-    {PREFIX}/gateway/istation-gateway-linux-x86_64-{version}/
+    {PREFIX}/engine/llama-cpp-linux/{gpu_vendor}/{version}/
 
-  ENVIRONMENT VARIABLES WRITTEN TO {PREFIX}/env/istation_gateway:
-    ISTATION_HOME
-    ISTATION_GATEWAY_STARTUP
+  ENVIRONMENT VARIABLES WRITTEN TO {PREFIX}/env/llama/{gpu_vendor}:
+    {PREFIX}/env/llama/{gpu_vendor}/VERSION      (version number)
+    {PREFIX}/env/llama/{gpu_vendor}/{version}     (env variables)
 
   EXAMPLES:
-    ./install.sh --prefix=/opt/istation
+    ./install.sh --prefix=/opt/istation --gpu_vendor=nvidia
     ./install.sh --help
 ===============================================================
 HELP
@@ -78,31 +84,31 @@ if [ -z "$PREFIX" ]; then
     echo "try ./install.sh --help"
     exit 1
 fi
+if [ -z "$GPU_VENDOR" ]; then
+    echo "error: --gpu_vendor is required"
+    echo "try ./install.sh --help"
+    exit 1
+fi
 
-SUB_DIR="istation-gateway-linux-x86_64-$VERSION"
 ISTATION_HOME="$PREFIX"
-
-GATEWAY_DIR="$ISTATION_HOME/gateway"
-TARGET_DIR="$GATEWAY_DIR/$SUB_DIR"
+ENGINE_DIR="$ISTATION_HOME/engine"
 
 # ----------------------------------------------------------
-#  discover startup executable name (single binary in package)
+#  write env variables
 # ----------------------------------------------------------
-STARTUP_NAME=""
-for f in "$SCRIPT_DIR"/*; do
-    [ -f "$f" ] || continue
-    fname=$(basename "$f")
-    if [ "$fname" != "install.sh" ] && [ "$fname" != "VERSION" ]; then
-        STARTUP_NAME="$fname"
-        break
-    fi
-done
+TARGET_DIR="$ENGINE_DIR/llama-cpp-linux/$GPU_VENDOR/$VERSION"
+STARTUP_CLI="$TARGET_DIR/llama-cli"
+STARTUP_SERVER="$TARGET_DIR/llama-server"
 
-# ----------------------------------------------------------
-#  persist environment variables to env file
-# ----------------------------------------------------------
-ENV_FILE="$ISTATION_HOME/env/istation_gateway"
-mkdir -p "$(dirname "$ENV_FILE")"
+GPU_VENDOR_DIR="$ISTATION_HOME/env/llama/$GPU_VENDOR"
+mkdir -p "$GPU_VENDOR_DIR"
+
+# VERSION file: version number only
+echo "$VERSION" > "$GPU_VENDOR_DIR/VERSION"
+echo "[write] $GPU_VENDOR_DIR/VERSION"
+
+# {version} file: env variables
+ENV_FILE="$GPU_VENDOR_DIR/$VERSION"
 
 set_env() {
     local key="$1"
@@ -115,27 +121,26 @@ set_env() {
 }
 
 set_env ISTATION_HOME "$ISTATION_HOME"
-
-STARTUP="$TARGET_DIR/$STARTUP_NAME"
-set_env ISTATION_GATEWAY_STARTUP "$STARTUP"
+set_env ISTATION_ENGINE_LLAMA_CLI_STARTUP "$STARTUP_CLI"
+set_env ISTATION_ENGINE_LLAMA_SERVER_STARTUP "$STARTUP_SERVER"
 
 # ----------------------------------------------------------
-#  create target directory and copy binary
+#  create target directory and copy files
 # ----------------------------------------------------------
 if [ ! -d "$TARGET_DIR" ]; then
     echo "[mkdir] $TARGET_DIR"
     mkdir -p "$TARGET_DIR"
 fi
 
-echo "[src] $SCRIPT_DIR"
+echo "[src] $SCRIPT_DIR/build_linux/bin"
 echo "[dst] $TARGET_DIR"
 echo ""
 
 COUNT=0
-for f in "$SCRIPT_DIR"/*; do
+for f in "$SCRIPT_DIR/build_linux/bin"/*; do
     [ -f "$f" ] || continue
     fname=$(basename "$f")
-    if [ "$fname" != "install.sh" ] && [ "$fname" != "VERSION" ]; then
+    if [ "$fname" != "install.sh" ]; then
         COUNT=$((COUNT + 1))
         echo "[copy] $fname"
         cp -f "$f" "$TARGET_DIR/"
