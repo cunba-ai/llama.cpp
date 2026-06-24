@@ -2,12 +2,10 @@
 set -e
 
 # ============================================================
-#  llama.cpp linux install script
+#  istation-gateway linux install script
 #  reads version from VERSION file in the same directory
-#  copies build_linux/bin/* to $PREFIX/engine/llama-cpp-linux/{gpu_vendor}/{version}
-#  if --gpu_vendor is set, writes env vars to
-#    $PREFIX/env/llama/{gpu_vendor}/VERSION   (version number)
-#    $PREFIX/env/llama/{gpu_vendor}/{version}  (env variables)
+#  copies binary to $PREFIX/gateway/istation-gateway-linux-x86_64-{version}
+#  sets ISTATION_HOME and startup variables in $PREFIX/env/istation_gateway
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -29,40 +27,35 @@ fi
 #  parse arguments
 # ----------------------------------------------------------
 PREFIX=""
-GPU_VENDOR=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --prefix=*)  PREFIX="${1#*=}" ;;
         --prefix)    PREFIX="$2"; shift ;;
-        --gpu_vendor=*) GPU_VENDOR="${1#*=}" ;;
-        --gpu_vendor)   GPU_VENDOR="$2"; shift ;;
         --help|-h)
             cat << 'HELP'
 ===============================================================
-  llama.cpp Linux Install Script
+  istation-gateway Linux Install Script
 ===============================================================
 
   Reads version from VERSION file in script directory.
-  Copies build_linux/bin/* to the engine folder.
+  Copies gateway binary to the gateway folder.
 
   USAGE:
     ./install.sh --prefix=PATH
 
   OPTIONS:
     --prefix=PATH           Installation root directory (required)
-    --gpu_vendor=VENDOR     GPU vendor name for GPU selection (optional)
 
   FILES INSTALLED TO:
-    {PREFIX}/engine/llama-cpp-linux/{gpu_vendor}/{version}/
+    {PREFIX}/gateway/istation-gateway-linux-x86_64-{version}/
 
-  IF --gpu_vendor is set, environment variables are written to:
-    {PREFIX}/env/llama/{gpu_vendor}/VERSION      (version number)
-    {PREFIX}/env/llama/{gpu_vendor}/{version}     (env variables)
+  ENVIRONMENT VARIABLES WRITTEN TO {PREFIX}/env/istation_gateway:
+    ISTATION_HOME
+    ISTATION_GATEWAY_STARTUP
 
   EXAMPLES:
     ./install.sh --prefix=/opt/istation
-    ./install.sh --prefix=/opt/istation --gpu_vendor=nvidia
     ./install.sh --help
 ===============================================================
 HELP
@@ -86,61 +79,63 @@ if [ -z "$PREFIX" ]; then
     exit 1
 fi
 
+SUB_DIR="istation-gateway-linux-x86_64-$VERSION"
 ISTATION_HOME="$PREFIX"
-ENGINE_DIR="$ISTATION_HOME/engine"
+
+GATEWAY_DIR="$ISTATION_HOME/gateway"
+TARGET_DIR="$GATEWAY_DIR/$SUB_DIR"
 
 # ----------------------------------------------------------
-#  write env variables if gpu_vendor is set
+#  discover startup executable name (single binary in package)
 # ----------------------------------------------------------
-if [ -n "$GPU_VENDOR" ]; then
-    TARGET_DIR="$ENGINE_DIR/llama-cpp-linux/$GPU_VENDOR/$VERSION"
-    STARTUP_CLI="$TARGET_DIR/llama-cli"
-    STARTUP_SERVER="$TARGET_DIR/llama-server"
-
-    GPU_VENDOR_DIR="$ISTATION_HOME/env/llama/$GPU_VENDOR"
-    mkdir -p "$GPU_VENDOR_DIR"
-
-    # VERSION file: version number only
-    echo "$VERSION" > "$GPU_VENDOR_DIR/VERSION"
-    echo "[write] $GPU_VENDOR_DIR/VERSION"
-
-    # {version} file: env variables
-    ENV_FILE="$GPU_VENDOR_DIR/$VERSION"
-
-    set_env() {
-        local key="$1"
-        local value="$2"
-        echo "[setenv] $key=$value"
-        if [ -f "$ENV_FILE" ]; then
-            sed -i "/^$key=/d" "$ENV_FILE"
-        fi
-        echo "$key=\"$value\"" >> "$ENV_FILE"
-    }
-
-    set_env ISTATION_HOME "$ISTATION_HOME"
-    set_env ISTATION_ENGINE_LLAMA_CLI_STARTUP "$STARTUP_CLI"
-    set_env ISTATION_ENGINE_LLAMA_SERVER_STARTUP "$STARTUP_SERVER"
-else
-    TARGET_DIR="$ENGINE_DIR/llama-cpp-linux/$VERSION"
-fi
+STARTUP_NAME=""
+for f in "$SCRIPT_DIR"/*; do
+    [ -f "$f" ] || continue
+    fname=$(basename "$f")
+    if [ "$fname" != "install.sh" ] && [ "$fname" != "VERSION" ]; then
+        STARTUP_NAME="$fname"
+        break
+    fi
+done
 
 # ----------------------------------------------------------
-#  create target directory and copy files
+#  persist environment variables to env file
+# ----------------------------------------------------------
+ENV_FILE="$ISTATION_HOME/env/istation_gateway"
+mkdir -p "$(dirname "$ENV_FILE")"
+
+set_env() {
+    local key="$1"
+    local value="$2"
+    echo "[setenv] $key=$value"
+    if [ -f "$ENV_FILE" ]; then
+        sed -i "/^$key=/d" "$ENV_FILE"
+    fi
+    echo "$key=\"$value\"" >> "$ENV_FILE"
+}
+
+set_env ISTATION_HOME "$ISTATION_HOME"
+
+STARTUP="$TARGET_DIR/$STARTUP_NAME"
+set_env ISTATION_GATEWAY_STARTUP "$STARTUP"
+
+# ----------------------------------------------------------
+#  create target directory and copy binary
 # ----------------------------------------------------------
 if [ ! -d "$TARGET_DIR" ]; then
     echo "[mkdir] $TARGET_DIR"
     mkdir -p "$TARGET_DIR"
 fi
 
-echo "[src] $SCRIPT_DIR/build_linux/bin"
+echo "[src] $SCRIPT_DIR"
 echo "[dst] $TARGET_DIR"
 echo ""
 
 COUNT=0
-for f in "$SCRIPT_DIR/build_linux/bin"/*; do
+for f in "$SCRIPT_DIR"/*; do
     [ -f "$f" ] || continue
     fname=$(basename "$f")
-    if [ "$fname" != "install.sh" ]; then
+    if [ "$fname" != "install.sh" ] && [ "$fname" != "VERSION" ]; then
         COUNT=$((COUNT + 1))
         echo "[copy] $fname"
         cp -f "$f" "$TARGET_DIR/"
