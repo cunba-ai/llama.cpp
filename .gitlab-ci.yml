@@ -50,6 +50,9 @@ build:windows:
       $commitId = git rev-parse --short HEAD
       $buildDate = Get-Date -Format "yyyyMMdd"
       $buildTag = "llama.cpp-windows-$buildDate-$commitId"
+      # 放入安装脚本和 VERSION 文件 (与 bin 同级, 解压后位于 zip 根目录)
+      Set-Content -Path ".\build-win\bin\VERSION" -Value "$buildDate-$commitId" -NoNewline -Encoding ASCII
+      Copy-Item "miaosoft\scripts\install\install.bat" ".\build-win\bin\install.bat" -Force
       New-Item -ItemType Directory -Force -Path output
       Compress-Archive -Path ".\build-win\bin\*" `
         -DestinationPath "output\$buildTag.zip" `
@@ -128,9 +131,14 @@ build:linux:
     - make -j$(nproc) llama-cli llama-server
     # 打包
     - cd "${CI_PROJECT_DIR}" && mkdir -p output
+    # 放入安装脚本和 VERSION 文件 (与 build_linux 同级, 解压后位于 zip 根目录)
+    - printf '%s' "${BUILD_DATE}-${COMMIT_ID}" > VERSION
+    - cp miaosoft/scripts/install/install.sh ./install.sh && chmod +x ./install.sh
     - |
       zip -r "output/${OUTPUT_ZIP}" \
           build_linux/bin/ \
+          install.sh \
+          VERSION \
           -x '*_test*' -x '*.a'
     - ls -lh "output/${OUTPUT_ZIP}"
     # 上传到 OSS
