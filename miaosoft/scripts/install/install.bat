@@ -134,7 +134,7 @@ echo.
 
 set COUNT=0
 for %%f in ("%SRC_DIR%\*") do (
-    if /i not "%%~nxf"=="install.bat" if /i not "%%~nxf"=="VERSION" (
+    if /i not "%%~nxf"=="install.bat" if /i not "%%~nxf"=="VERSION" if /i not "%%~nxf"=="MANIFEST.txt" (
         set /a COUNT+=1
         echo [copy] %%~nxf
         copy /y "%%f" "%TARGET_DIR%\" >nul
