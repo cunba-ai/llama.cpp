@@ -127,7 +127,8 @@ build:linux:
         -DGGML_CPU_ALL_VARIANTS=OFF \
         -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
         -DAMDGPU_TARGETS="${AMDGPU_ARCHS}" \
-        -DLLAMA_BUILD_UI=OFF
+        -DLLAMA_BUILD_UI=OFF \
+        -DLLAMA_USE_PREBUILT_UI=OFF
     - make -j$(nproc) llama-cli llama-server
     # 打包
     - cd "${CI_PROJECT_DIR}" && mkdir -p output
