@@ -110,62 +110,57 @@ echo   AMD:    RX 7900 XTX, RX 9070/XT (HIP)
 echo   Other:  Vulkan fallback
 
 :: ============================================================
-::  Bundle runtime DLLs into the build output so the AIO is
-::  self-contained — no separate ROCm / CUDA / LLVM install
-::  required on target machines.
+::  Bundle runtime DLLs:
+::    - libomp140.x86_64.dll  -> main output (build-win\bin)
+::    - CUDA runtime DLLs     -> build-win\cuda-runtime\
+::    - ROCm runtime DLLs      -> build-win\rocm-runtime\
 :: ============================================================
 set "BUNDLE_DIR=%~dp0..\build-win\bin\Release"
 if not exist "%BUNDLE_DIR%" set "BUNDLE_DIR=%~dp0..\build-win\bin"
 
+set "CUDA_RT_DIR=%~dp0..\build-win\cuda-runtime"
+set "ROCM_RT_DIR=%~dp0..\build-win\rocm-runtime"
+
 set BUNDLE_OK=0
 set BUNDLE_MISSING=0
 
-:: LLVM OpenMP (release build of libomp140)
+:: LLVM OpenMP (release build of libomp140) -> main output
 call :try_bundle_libomp
 
-:: HIP / ROCm runtime (aligned with reference AIO build)
-call :bundle_dll "%HIP_PATH%\bin\amdhip64_7.dll" "amdhip64_7.dll" "HIP runtime"
-call :bundle_dll "%HIP_PATH%\bin\amd_comgr0701.dll" "amd_comgr0701.dll" "Code Object Manager"
-call :bundle_dll "%HIP_PATH%\bin\hiprtc0701.dll" "hiprtc0701.dll" "HIP RTC"
-call :bundle_dll "%HIP_PATH%\bin\hiprtc-builtins0701.dll" "hiprtc-builtins0701.dll" "HIP RTC builtins"
-call :bundle_dll "%HIP_PATH%\bin\libhipblas.dll" "libhipblas.dll" "hipBLAS"
-call :bundle_dll "%HIP_PATH%\bin\libhipblaslt.dll" "libhipblaslt.dll" "hipBLASLt"
-call :bundle_dll "%HIP_PATH%\bin\rocblas.dll" "rocblas.dll" "rocBLAS"
-call :bundle_dll "%HIP_PATH%\bin\rocsolver.dll" "rocsolver.dll" "rocSOLVER"
+:: HIP / ROCm runtime -> rocm-runtime/
+mkdir "%ROCM_RT_DIR%" 2>nul
+call :bundle_dll_to "%HIP_PATH%\bin\amdhip64_7.dll" "amdhip64_7.dll" "HIP runtime" "%ROCM_RT_DIR%"
+call :bundle_dll_to "%HIP_PATH%\bin\amd_comgr0701.dll" "amd_comgr0701.dll" "Code Object Manager" "%ROCM_RT_DIR%"
+call :bundle_dll_to "%HIP_PATH%\bin\hiprtc0701.dll" "hiprtc0701.dll" "HIP RTC" "%ROCM_RT_DIR%"
+call :bundle_dll_to "%HIP_PATH%\bin\hiprtc-builtins0701.dll" "hiprtc-builtins0701.dll" "HIP RTC builtins" "%ROCM_RT_DIR%"
+call :bundle_dll_to "%HIP_PATH%\bin\libhipblas.dll" "libhipblas.dll" "hipBLAS" "%ROCM_RT_DIR%"
+call :bundle_dll_to "%HIP_PATH%\bin\libhipblaslt.dll" "libhipblaslt.dll" "hipBLASLt" "%ROCM_RT_DIR%"
+call :bundle_dll_to "%HIP_PATH%\bin\rocblas.dll" "rocblas.dll" "rocBLAS" "%ROCM_RT_DIR%"
+call :bundle_dll_to "%HIP_PATH%\bin\rocsolver.dll" "rocsolver.dll" "rocSOLVER" "%ROCM_RT_DIR%"
 
-:: Reference build had these; ROCm 7.1 does not ship them — allow skip
-call :bundle_dll "%HIP_PATH%\bin\rocm-openblas.dll" "rocm-openblas.dll" "OpenBLAS fallback [optional]"
-call :bundle_dll "%HIP_PATH%\bin\rocm-openblas64.dll" "rocm-openblas64.dll" "OpenBLAS 64-bit fallback [optional]"
+:: Reference build had these; ROCm 7.1 does not ship them -- allow skip
+call :bundle_dll_to "%HIP_PATH%\bin\rocm-openblas.dll" "rocm-openblas.dll" "OpenBLAS fallback [optional]" "%ROCM_RT_DIR%"
+call :bundle_dll_to "%HIP_PATH%\bin\rocm-openblas64.dll" "rocm-openblas64.dll" "OpenBLAS 64-bit fallback [optional]" "%ROCM_RT_DIR%"
 
-:: CUDA runtime
-call :bundle_dll "%CUDA_12_PATH%\bin\cudart64_12.dll" "cudart64_12.dll" "CUDA runtime"
-call :bundle_dll "%CUDA_12_PATH%\bin\cublas64_12.dll" "cublas64_12.dll" "cuBLAS"
-call :bundle_dll "%CUDA_12_PATH%\bin\cublasLt64_12.dll" "cublasLt64_12.dll" "cuBLASLt"
-call :bundle_dll "%CUDA_12_PATH%\bin\nvrtc64_120_0.dll" "nvrtc64_120_0.dll" "NVRTC"
-call :bundle_dll "%CUDA_12_PATH%\bin\nvJitLink_120_0.dll" "nvJitLink_120_0.dll" "JIT linker"
-call :bundle_dll "%CUDA_12_PATH%\bin\nvtx64_120_0.dll" "nvtx64_120_0.dll" "NVTX"
+:: CUDA runtime -> cuda-runtime/
+mkdir "%CUDA_RT_DIR%" 2>nul
+call :bundle_dll_to "%CUDA_12_PATH%\bin\cudart64_12.dll" "cudart64_12.dll" "CUDA runtime" "%CUDA_RT_DIR%"
+call :bundle_dll_to "%CUDA_12_PATH%\bin\cublas64_12.dll" "cublas64_12.dll" "cuBLAS" "%CUDA_RT_DIR%"
+call :bundle_dll_to "%CUDA_12_PATH%\bin\cublasLt64_12.dll" "cublasLt64_12.dll" "cuBLASLt" "%CUDA_RT_DIR%"
+call :bundle_dll_to "%CUDA_12_PATH%\bin\nvrtc64_120_0.dll" "nvrtc64_120_0.dll" "NVRTC" "%CUDA_RT_DIR%"
+call :bundle_dll_to "%CUDA_12_PATH%\bin\nvJitLink_120_0.dll" "nvJitLink_120_0.dll" "JIT linker" "%CUDA_RT_DIR%"
+call :bundle_dll_to "%CUDA_12_PATH%\bin\nvtx64_120_0.dll" "nvtx64_120_0.dll" "NVTX" "%CUDA_RT_DIR%"
 
 echo.
 if %BUNDLE_MISSING% GTR 0 goto :bundle_summary_warn
-echo [INFO] All %BUNDLE_OK% runtime DLLs bundled into: %BUNDLE_DIR%
+echo [INFO] All %BUNDLE_OK% runtime DLLs bundled.
 goto :bundle_summary_done
 :bundle_summary_warn
 echo [WARN] %BUNDLE_MISSING% runtime DLLs missing or skipped.
 :bundle_summary_done
-echo # llama.cpp AIO runtime DLL manifest ^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo # Generated on %DATE% %TIME% ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo. ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo ## ROCm / HIP runtime [aligned with reference build]: ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo   - libomp140.x86_64.dll [LLVM OpenMP, release] ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo   - amdhip64_7.dll ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo   - amd_comgr0701.dll ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo   - hiprtc0701.dll + hiprtc-builtins0701.dll ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo   - libhipblas.dll + libhipblaslt.dll ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo   - rocblas.dll + rocsolver.dll ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo. ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo ## CUDA runtime: ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo   - cudart64_12.dll + cublas64_12.dll + cublasLt64_12.dll ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
-echo   - nvrtc64_120_0.dll + nvJitLink_120_0.dll + nvtx64_120_0.dll ^>^> "%BUNDLE_DIR%\MANIFEST.txt"
+echo   libomp140.x86_64.dll  -> %BUNDLE_DIR%
+echo   CUDA runtime DLLs     -> %CUDA_RT_DIR%
+echo   ROCm runtime DLLs     -> %ROCM_RT_DIR%
 goto :bundle_done
 
 :try_bundle_libomp
@@ -184,12 +179,34 @@ echo [bundle] %DST_NAME%   -- %DESC%
 set /a BUNDLE_OK+=1
 exit /b 0
 
+:bundle_dll_to
+set "SRC=%~1"
+set "DST_NAME=%~2"
+set "DESC=%~3"
+set "DST_DIR=%~4"
+if not exist "%SRC%" goto :bundle_skip_to
+copy /y "%SRC%" "%DST_DIR%\%DST_NAME%" 1>nul 2>nul
+if errorlevel 1 goto :bundle_fail_to
+echo [bundle] %DST_NAME%   -- %DESC%  -> %DST_DIR%
+set /a BUNDLE_OK+=1
+exit /b 0
+
 :bundle_fail
 echo [bundle-FAIL] %DST_NAME%   copy failed, source: %SRC%
 set /a BUNDLE_MISSING+=1
 exit /b 0
 
 :bundle_skip
+echo [bundle-skip] %DST_NAME%   not found at: %SRC%
+set /a BUNDLE_MISSING+=1
+exit /b 0
+
+:bundle_fail_to
+echo [bundle-FAIL] %DST_NAME%   copy failed, source: %SRC%
+set /a BUNDLE_MISSING+=1
+exit /b 0
+
+:bundle_skip_to
 echo [bundle-skip] %DST_NAME%   not found at: %SRC%
 set /a BUNDLE_MISSING+=1
 exit /b 0
