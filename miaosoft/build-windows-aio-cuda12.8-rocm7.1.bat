@@ -114,8 +114,8 @@ echo   Other:  Vulkan fallback
 ::  self-contained — no separate ROCm / CUDA / LLVM install
 ::  required on target machines.
 :: ============================================================
-set "BUNDLE_DIR=%~dp0..\..\build-win\bin\Release"
-if not exist "%BUNDLE_DIR%" set "BUNDLE_DIR=%~dp0..\..\build-win\bin"
+set "BUNDLE_DIR=%~dp0..\build-win\bin\Release"
+if not exist "%BUNDLE_DIR%" set "BUNDLE_DIR=%~dp0..\build-win\bin"
 
 set BUNDLE_OK=0
 set BUNDLE_MISSING=0
