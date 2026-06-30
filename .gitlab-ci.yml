@@ -77,6 +77,38 @@ build:windows:
       .\ossutil64.exe -c .\ossutilconfig cp "$($zipFile.FullName)" "oss://$BUCKET_NAME/$OSS_PATH/latest/llama.cpp-windows.zip" -f
       Write-Host "Uploaded to: oss://$BUCKET_NAME/$ossKey"
       Write-Host "Latest:      oss://$BUCKET_NAME/$OSS_PATH/latest/llama.cpp-windows.zip"
+    # Package & upload CUDA runtime zip (only to latest/, skip if already exists)
+    - |
+      $cudaZip = "output\cuda-runtime-windows.zip"
+      $cudaOssKey = "$OSS_PATH/latest/cuda-runtime-windows.zip"
+      if (Test-Path "build-win\cuda-runtime") {
+        Compress-Archive -Path "build-win\cuda-runtime\*" -DestinationPath $cudaZip -Force
+        $probe = .\ossutil64.exe -c .\ossutilconfig stat "oss://$BUCKET_NAME/$cudaOssKey" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+          .\ossutil64.exe -c .\ossutilconfig cp $cudaZip "oss://$BUCKET_NAME/$cudaOssKey" -f
+          Write-Host "Uploaded CUDA runtime: oss://$BUCKET_NAME/$cudaOssKey"
+        } else {
+          Write-Host "CUDA runtime already exists on OSS, skipped."
+        }
+      } else {
+        Write-Host "[WARN] build-win\cuda-runtime not found, skipped."
+      }
+    # Package & upload ROCm runtime zip (only to latest/, skip if already exists)
+    - |
+      $rocmZip = "output\rocm-runtime-windows.zip"
+      $rocmOssKey = "$OSS_PATH/latest/rocm-runtime-windows.zip"
+      if (Test-Path "build-win\rocm-runtime") {
+        Compress-Archive -Path "build-win\rocm-runtime\*" -DestinationPath $rocmZip -Force
+        $probe = .\ossutil64.exe -c .\ossutilconfig stat "oss://$BUCKET_NAME/$rocmOssKey" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+          .\ossutil64.exe -c .\ossutilconfig cp $rocmZip "oss://$BUCKET_NAME/$rocmOssKey" -f
+          Write-Host "Uploaded ROCm runtime: oss://$BUCKET_NAME/$rocmOssKey"
+        } else {
+          Write-Host "ROCm runtime already exists on OSS, skipped."
+        }
+      } else {
+        Write-Host "[WARN] build-win\rocm-runtime not found, skipped."
+      }
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
       when: always
