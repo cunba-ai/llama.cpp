@@ -426,6 +426,7 @@ jobs:
             -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=icx ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DGGML_BACKEND_DL=ON -DBUILD_SHARED_LIBS=ON ^
+            -DGGML_NATIVE=OFF ^
             -DGGML_SYCL=ON -DGGML_SYCL_F16=OFF ^
             -DGGML_VULKAN=ON ^
             ${{ env.CMAKE_ARGS }}
