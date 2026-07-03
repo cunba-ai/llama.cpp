@@ -129,7 +129,12 @@ jobs:
       - name: Dependencies
         run: |
           apt-get update -y
-          apt-get install -y build-essential libssl-dev ninja-build git wget libvulkan-dev glslc spirv-headers
+          apt-get install -y build-essential libssl-dev ninja-build git wget gnupg ca-certificates
+          # glslc is not in stock Ubuntu 22.04; pull it from the LunarG Vulkan SDK repo
+          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | apt-key add -
+          wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+          apt-get update -y
+          apt-get install -y vulkan-sdk
 
       - name: Build
         run: |
@@ -297,7 +302,12 @@ jobs:
       - name: Dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential libssl-dev ninja-build libvulkan-dev glslc spirv-headers
+          sudo apt-get install -y build-essential libssl-dev ninja-build wget gnupg ca-certificates
+          # glslc is not in stock Ubuntu 22.04; pull it from the LunarG Vulkan SDK repo
+          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+          sudo apt-get update -y
+          sudo apt-get install -y vulkan-sdk
 
       - name: Setup ROCm 7.2.1
         run: |
