@@ -27,6 +27,10 @@ on:
       '**/*.glsl'
     ]
 
+permissions:
+  contents: read
+  actions: write   # needed by ccache-clear to delete actions caches
+
 env:
   GH_TOKEN: ${{ github.token }}
   CMAKE_ARGS: "-DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON -DGGML_RPC=ON"
@@ -91,6 +95,7 @@ jobs:
 
       - name: ccache-clear
         uses: ./.github/actions/ccache-clear
+        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
         with:
           key: combined-windows-2022-cuda-12.8
 
@@ -255,6 +260,7 @@ jobs:
 
       - name: ccache-clear
         uses: ./.github/actions/ccache-clear
+        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
         with:
           key: combined-windows-2022-hip
 
@@ -350,6 +356,7 @@ jobs:
 
       - name: ccache-clear
         uses: ./.github/actions/ccache-clear
+        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
         with:
           key: combined-ubuntu-22.04-hip
 
@@ -434,6 +441,7 @@ jobs:
 
       - name: ccache-clear
         uses: ./.github/actions/ccache-clear
+        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
         with:
           key: combined-windows-2022-sycl
 
@@ -537,6 +545,7 @@ jobs:
 
       - name: ccache-clear
         uses: ./.github/actions/ccache-clear
+        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
         with:
           key: combined-ubuntu-24.04-sycl
 
