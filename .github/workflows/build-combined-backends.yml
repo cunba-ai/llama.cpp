@@ -7,6 +7,10 @@ name: Build combined backends
 #
 # CUDA+Vulkan must pass; HIP+Vulkan and SYCL+Vulkan are continue-on-error
 # (untested upstream: Vulkan sources compiled under ROCm-clang / icpx).
+#
+# Note: no ccache-clear step. Unlike release.yml (which clears caches for clean
+# release runs), we KEEP ccache + toolchain caches across runs so iteration is
+# fast. GitHub LRU-evicts old caches under the 10GB repo limit automatically.
 
 on:
   workflow_dispatch:
@@ -29,11 +33,11 @@ on:
 
 permissions:
   contents: read
-  actions: write   # needed by ccache-clear to delete actions caches
+  actions: write   # needed to save ccache + toolchain caches
 
 env:
   GH_TOKEN: ${{ github.token }}
-  CMAKE_ARGS: "-DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON -DGGML_RPC=ON"
+  CMAKE_ARGS: "-DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON -DGGML_RPC=ON -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF"
   CUDA_ARCHS: "60;61;70;75;80;86;89;90"
   AMDGPU_TARGETS: "gfx1100;gfx1101;gfx1102;gfx1150;gfx1151;gfx1200;gfx1201"
   VULKAN_VERSION: "1.4.313.2"
@@ -57,15 +61,40 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Cache CUDA Toolkit 12.8
+        id: cache-cuda
+        uses: actions/cache@v5
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8
+          key: cuda-12.8-redist-v1   # bump if windows-setup-cuda 12.8 step changes
+
       - name: Install CUDA Toolkit 12.8
+        if: steps.cache-cuda.outputs.cache-hit != 'true'
         uses: ./.github/actions/windows-setup-cuda
         with:
           cuda_version: '12.8'
 
+      - name: Configure CUDA env
+        run: |
+          echo "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\libnvvp" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Cache Vulkan SDK
+        id: cache-vulkan
+        uses: actions/cache@v5
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
+          key: vulkan-sdk-${{ env.VULKAN_VERSION }}-v1
+
       - name: Install Vulkan SDK
+        if: steps.cache-vulkan.outputs.cache-hit != 'true'
         run: |
           curl.exe -o $env:RUNNER_TEMP/VulkanSDK-Installer.exe -L "https://sdk.lunarg.com/sdk/download/${env:VULKAN_VERSION}/windows/vulkansdk-windows-X64-${env:VULKAN_VERSION}.exe"
           & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+
+      - name: Configure Vulkan env
+        run: |
           Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\${env:VULKAN_VERSION}"
           Add-Content $env:GITHUB_PATH "C:\VulkanSDK\${env:VULKAN_VERSION}\bin"
 
@@ -91,13 +120,7 @@ jobs:
             -DCMAKE_CUDA_ARCHITECTURES="${{ env.CUDA_ARCHS }}" ^
             ${{ env.CMAKE_ARGS }}
           set /A NINJA_JOBS=%NUMBER_OF_PROCESSORS%-1
-          cmake --build build --config Release -j %NINJA_JOBS% --target llama-cli llama-server
-
-      - name: ccache-clear
-        uses: ./.github/actions/ccache-clear
-        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
-        with:
-          key: combined-windows-2022-cuda-12.8
+          cmake --build build --config Release -j %NINJA_JOBS% --target llama-cli llama-server ggml-rpc-server
 
       - name: Bundle CUDA runtime DLLs
         run: |
@@ -141,6 +164,11 @@ jobs:
           apt-get update -y
           apt-get install -y vulkan-sdk
 
+      - name: ccache
+        uses: ggml-org/ccache-action@v1.2.21
+        with:
+          key: combined-ubuntu-22.04-cuda-12.8
+
       - name: Build
         run: |
           cmake -B build \
@@ -155,7 +183,7 @@ jobs:
             -DGGML_CUDA_CUB_3DOT2=ON \
             -DCMAKE_CUDA_ARCHITECTURES="${{ env.CUDA_ARCHS }}" \
             ${{ env.CMAKE_ARGS }}
-          cmake --build build --config Release -j $(nproc) --target llama-cli llama-server
+          cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
 
       - name: Bundle CUDA runtime
         run: |
@@ -224,10 +252,21 @@ jobs:
               exit 1
           }
 
+      - name: Cache Vulkan SDK
+        id: cache-vulkan
+        uses: actions/cache@v5
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
+          key: vulkan-sdk-${{ env.VULKAN_VERSION }}-v1
+
       - name: Install Vulkan SDK
+        if: steps.cache-vulkan.outputs.cache-hit != 'true'
         run: |
           curl.exe -o $env:RUNNER_TEMP/VulkanSDK-Installer.exe -L "https://sdk.lunarg.com/sdk/download/${env:VULKAN_VERSION}/windows/vulkansdk-windows-X64-${env:VULKAN_VERSION}.exe"
           & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+
+      - name: Configure Vulkan env
+        run: |
           Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\${env:VULKAN_VERSION}"
           Add-Content $env:GITHUB_PATH "C:\VulkanSDK\${env:VULKAN_VERSION}\bin"
 
@@ -256,13 +295,7 @@ jobs:
             -DGGML_HIP=ON `
             -DGGML_VULKAN=ON `
             ${{ env.CMAKE_ARGS }}
-          cmake --build build --config Release -j ${env:NUMBER_OF_PROCESSORS} --target llama-cli llama-server
-
-      - name: ccache-clear
-        uses: ./.github/actions/ccache-clear
-        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
-        with:
-          key: combined-windows-2022-hip
+          cmake --build build --config Release -j ${env:NUMBER_OF_PROCESSORS} --target llama-cli llama-server ggml-rpc-server
 
       - name: Bundle ROCm runtime DLLs
         run: |
@@ -315,7 +348,15 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y vulkan-sdk
 
+      - name: Cache ROCm 7.2.1
+        id: cache-rocm-linux
+        uses: actions/cache@v5
+        with:
+          path: /opt/rocm
+          key: rocm-7.2.1-apt-v1
+
       - name: Setup ROCm 7.2.1
+        if: steps.cache-rocm-linux.outputs.cache-hit != 'true'
         run: |
           sudo mkdir --parents --mode=0755 /etc/apt/keyrings
           wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | \
@@ -330,6 +371,9 @@ jobs:
           EOF
           sudo apt-get update
           sudo apt-get install -y rocm-hip-sdk
+
+      - name: Add ROCm to PATH
+        run: echo "/opt/rocm/bin" >> $GITHUB_PATH
 
       - name: ccache
         uses: ggml-org/ccache-action@v1.2.21
@@ -352,13 +396,7 @@ jobs:
             -DGGML_HIP=ON \
             -DGGML_VULKAN=ON \
             ${{ env.CMAKE_ARGS }}
-          cmake --build build --config Release -j $(nproc) --target llama-cli llama-server
-
-      - name: ccache-clear
-        uses: ./.github/actions/ccache-clear
-        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
-        with:
-          key: combined-ubuntu-22.04-hip
+          cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
 
       - name: Bundle ROCm runtime
         run: |
@@ -410,10 +448,21 @@ jobs:
           Expand-Archive -Path "level-zero-win-sdk.zip" -DestinationPath "C:/level-zero-sdk" -Force
           "LEVEL_ZERO_V1_SDK_PATH=C:/level-zero-sdk" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Cache Vulkan SDK
+        id: cache-vulkan
+        uses: actions/cache@v5
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
+          key: vulkan-sdk-${{ env.VULKAN_VERSION }}-v1
+
       - name: Install Vulkan SDK
+        if: steps.cache-vulkan.outputs.cache-hit != 'true'
         run: |
           curl.exe -o $env:RUNNER_TEMP/VulkanSDK-Installer.exe -L "https://sdk.lunarg.com/sdk/download/${env:VULKAN_VERSION}/windows/vulkansdk-windows-X64-${env:VULKAN_VERSION}.exe"
           & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+
+      - name: Configure Vulkan env
+        run: |
           Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\${env:VULKAN_VERSION}"
           Add-Content $env:GITHUB_PATH "C:\VulkanSDK\${env:VULKAN_VERSION}\bin"
 
@@ -437,13 +486,7 @@ jobs:
             -DGGML_SYCL=ON -DGGML_SYCL_F16=OFF ^
             -DGGML_VULKAN=ON ^
             ${{ env.CMAKE_ARGS }}
-          cmake --build build --config Release -j %NUMBER_OF_PROCESSORS% --target llama-cli llama-server
-
-      - name: ccache-clear
-        uses: ./.github/actions/ccache-clear
-        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
-        with:
-          key: combined-windows-2022-sycl
+          cmake --build build --config Release -j %NUMBER_OF_PROCESSORS% --target llama-cli llama-server ggml-rpc-server
 
       - name: Bundle oneAPI runtime DLLs
         shell: bash
@@ -505,7 +548,15 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y build-essential libssl-dev ninja-build libvulkan-dev glslc spirv-headers
 
+      - name: Cache oneAPI
+        id: cache-oneapi
+        uses: actions/cache@v5
+        with:
+          path: /opt/intel
+          key: oneapi-2025.3.3.16-v1
+
       - name: Download & Install oneAPI
+        if: steps.cache-oneapi.outputs.cache-hit != 'true'
         run: |
           cd /tmp
           wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/56f7923a-adb8-43f3-8b02-2b60fcac8cab/intel-deep-learning-essentials-2025.3.3.16_offline.sh -O intel-deep-learning-essentials_offline.sh
@@ -541,13 +592,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=icpx \
             -DLLAMA_OPENSSL=OFF \
             ${{ env.CMAKE_ARGS }}
-          cmake --build build --config Release -j $(nproc) --target llama-cli llama-server
-
-      - name: ccache-clear
-        uses: ./.github/actions/ccache-clear
-        continue-on-error: true   # cache cleanup must never fail an otherwise-green build
-        with:
-          key: combined-ubuntu-24.04-sycl
+          cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
 
       - name: Bundle oneAPI runtime
         run: |
