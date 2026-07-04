@@ -348,15 +348,7 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y vulkan-sdk
 
-      - name: Cache ROCm 7.2.1
-        id: cache-rocm-linux
-        uses: actions/cache@v5
-        with:
-          path: /opt/rocm
-          key: rocm-7.2.1-apt-v1
-
       - name: Setup ROCm 7.2.1
-        if: steps.cache-rocm-linux.outputs.cache-hit != 'true'
         run: |
           sudo mkdir --parents --mode=0755 /etc/apt/keyrings
           wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | \
