@@ -45,7 +45,7 @@ exit /b 1
 :: ============================================================
 ::  llama.cpp windows install script
 ::  reads version from VERSION file in the same directory
-::  copies all files from current dir to target engine directory
+::  copies all files and folders from current dir to target engine directory
 ::  if --gpu_vendor is set, writes env vars to
 ::    %PREFIX%\env\llama\{gpu_vendor}\VERSION   (version number)
 ::    %PREFIX%\env\llama\{gpu_vendor}\{version}  (env variables)
@@ -121,7 +121,7 @@ if not "%GPU_VENDOR%"=="" (
 )
 
 :: ----------------------------------------------------------
-::  create target directory and copy all files
+::  create target directory and copy all files and folders
 :: ----------------------------------------------------------
 if not exist "%TARGET_DIR%" (
     echo [mkdir] %TARGET_DIR%
@@ -132,17 +132,27 @@ echo [src] %SRC_DIR%
 echo [dst] %TARGET_DIR%
 echo.
 
-set COUNT=0
+set FILE_COUNT=0
+set DIR_COUNT=0
+
+:: copy top-level files (skip install.bat and VERSION)
 for %%f in ("%SRC_DIR%\*") do (
-    if /i not "%%~nxf"=="install.bat" if /i not "%%~nxf"=="VERSION" if /i not "%%~nxf"=="MANIFEST.txt" (
-        set /a COUNT+=1
+    if /i not "%%~nxf"=="install.bat" if /i not "%%~nxf"=="VERSION" (
+        set /a FILE_COUNT+=1
         echo [copy] %%~nxf
         copy /y "%%f" "%TARGET_DIR%\" >nul
     )
 )
 
+:: copy subdirectories recursively
+for /d %%d in ("%SRC_DIR%\*") do (
+    set /a DIR_COUNT+=1
+    echo [copy] %%~nxd\
+    xcopy "%%d" "%TARGET_DIR%\%%~nxd\" /e /i /y /q >nul
+)
+
 echo.
-echo done, %COUNT% files copied.
+echo done, %FILE_COUNT% files and %DIR_COUNT% folders copied.
 exit /b 0
 
 :help
@@ -151,7 +161,7 @@ echo   llama.cpp Windows Install Script
 echo ===============================================================
 echo.
 echo   Reads version from VERSION file in script directory.
-echo   Copies all files from this directory to the engine folder.
+echo   Copies all files and folders from this directory to the engine folder.
 echo.
 echo   USAGE:
 echo     install.bat --prefix=PATH

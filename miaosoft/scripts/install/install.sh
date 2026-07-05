@@ -125,7 +125,7 @@ set_env ISTATION_ENGINE_LLAMA_CLI_STARTUP "$STARTUP_CLI"
 set_env ISTATION_ENGINE_LLAMA_SERVER_STARTUP "$STARTUP_SERVER"
 
 # ----------------------------------------------------------
-#  create target directory and copy files
+#  create target directory and copy files and folders
 # ----------------------------------------------------------
 if [ ! -d "$TARGET_DIR" ]; then
     echo "[mkdir] $TARGET_DIR"
@@ -136,16 +136,24 @@ echo "[src] $SCRIPT_DIR/build_linux/bin"
 echo "[dst] $TARGET_DIR"
 echo ""
 
-COUNT=0
+FILE_COUNT=0
+DIR_COUNT=0
 for f in "$SCRIPT_DIR/build_linux/bin"/*; do
-    [ -f "$f" ] || continue
+    [ -e "$f" ] || continue
     fname=$(basename "$f")
-    if [ "$fname" != "install.sh" ]; then
-        COUNT=$((COUNT + 1))
+    if [ "$fname" = "install.sh" ]; then
+        continue
+    fi
+    if [ -d "$f" ]; then
+        DIR_COUNT=$((DIR_COUNT + 1))
+        echo "[copy] $fname/"
+        cp -rf "$f" "$TARGET_DIR/"
+    else
+        FILE_COUNT=$((FILE_COUNT + 1))
         echo "[copy] $fname"
         cp -f "$f" "$TARGET_DIR/"
     fi
 done
 
 echo ""
-echo "done, $COUNT files copied."
+echo "done, $FILE_COUNT files and $DIR_COUNT folders copied."
