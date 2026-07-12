@@ -53,17 +53,17 @@ exit /b 1
 
 set "SRC_DIR=%~dp0"
 if "%SRC_DIR:~-1%"=="\" set "SRC_DIR=%SRC_DIR:~0,-1%"
-if not exist "%SRC_DIR%\VERSION" if exist "%CD%\VERSION" set "SRC_DIR=%CD%"
+if not exist "!SRC_DIR!\VERSION" if exist "!CD!\VERSION" set "SRC_DIR=!CD!"
 
 :: ----------------------------------------------------------
 ::  read version from VERSION file
 :: ----------------------------------------------------------
-if not exist "%SRC_DIR%\VERSION" (
-    echo error: VERSION file not found in %SRC_DIR%.
+if not exist "!SRC_DIR!\VERSION" (
+    echo error: VERSION file not found in !SRC_DIR!.
     echo tip: Running from PowerShell? Try: cmd /c ".\install.bat --prefix=..."
     exit /b 1
 )
-set /p VERSION=<"%SRC_DIR%\VERSION"
+set /p VERSION=<"!SRC_DIR!\VERSION"
 if "%VERSION%"=="" (
     echo error: VERSION file is empty
     exit /b 1
@@ -72,12 +72,12 @@ if "%VERSION%"=="" (
 :: ----------------------------------------------------------
 ::  validate required arguments
 :: ----------------------------------------------------------
-if "%PREFIX%"=="" (
+if "!PREFIX!"=="" (
     echo error: --prefix is required
     echo try install.bat --help
     exit /b 1
 )
-if "%GPU_VENDOR%"=="" (
+if "!GPU_VENDOR!"=="" (
     echo error: --gpu_vendor is required
     echo try install.bat --help
     exit /b 1
@@ -89,12 +89,12 @@ set "ENGINE_DIR=%ISTATION_HOME%\engine"
 :: ----------------------------------------------------------
 ::  write env variables if gpu_vendor is set
 :: ----------------------------------------------------------
-if not "%GPU_VENDOR%"=="" (
-    set "TARGET_DIR=%ENGINE_DIR%\llama-cpp\%GPU_VENDOR%\%VERSION%"
+if not "!GPU_VENDOR!"=="" (
+    set "TARGET_DIR=!ENGINE_DIR!\llama-cpp\!GPU_VENDOR!\!VERSION!"
     set "STARTUP_CLI=!TARGET_DIR!\llama-cli.exe"
     set "STARTUP_SERVER=!TARGET_DIR!\llama-server.exe"
 
-    set "GPU_VENDOR_DIR=%ISTATION_HOME%\env\llama\%GPU_VENDOR%"
+    set "GPU_VENDOR_DIR=!ISTATION_HOME!\env\llama\!GPU_VENDOR!"
     if not exist "!GPU_VENDOR_DIR!" mkdir "!GPU_VENDOR_DIR!"
 
     :: VERSION file: version number only
@@ -117,38 +117,38 @@ if not "%GPU_VENDOR%"=="" (
     echo ISTATION_ENGINE_LLAMA_SERVER_STARTUP="!STARTUP_SERVER!" >> "!ENV_FILE!"
     if exist "!TEMP_FILE!" del /f /q "!TEMP_FILE!" 2>nul
 ) else (
-    set "TARGET_DIR=%ENGINE_DIR%\llama-cpp\%VERSION%"
+    set "TARGET_DIR=!ENGINE_DIR!\llama-cpp\!VERSION!"
 )
 
 :: ----------------------------------------------------------
 ::  create target directory and copy all files and folders
 :: ----------------------------------------------------------
-if not exist "%TARGET_DIR%" (
-    echo [mkdir] %TARGET_DIR%
-    mkdir "%TARGET_DIR%"
+if not exist "!TARGET_DIR!" (
+    echo [mkdir] !TARGET_DIR!
+    mkdir "!TARGET_DIR!"
 )
 
-echo [src] %SRC_DIR%
-echo [dst] %TARGET_DIR%
+echo [src] !SRC_DIR!
+echo [dst] !TARGET_DIR!
 echo.
 
 set FILE_COUNT=0
 set DIR_COUNT=0
 
 :: copy top-level files (skip install.bat and VERSION)
-for %%f in ("%SRC_DIR%\*") do (
+for %%f in ("!SRC_DIR!\*") do (
     if /i not "%%~nxf"=="install.bat" if /i not "%%~nxf"=="VERSION" (
         set /a FILE_COUNT+=1
         echo [copy] %%~nxf
-        copy /y "%%f" "%TARGET_DIR%\" >nul
+        copy /y "%%f" "!TARGET_DIR!\" >nul
     )
 )
 
 :: copy subdirectories recursively
-for /d %%d in ("%SRC_DIR%\*") do (
+for /d %%d in ("!SRC_DIR!\*") do (
     set /a DIR_COUNT+=1
     echo [copy] %%~nxd\
-    xcopy "%%d" "%TARGET_DIR%\%%~nxd\" /e /i /y /q >nul
+    xcopy "%%d" "!TARGET_DIR!\%%~nxd\" /e /i /y /q >nul
 )
 
 echo.
