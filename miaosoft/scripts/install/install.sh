@@ -4,7 +4,7 @@ set -e
 # ============================================================
 #  llama.cpp linux install script
 #  reads version from VERSION file in the same directory
-#  copies build_linux/bin/* to $PREFIX/engine/llama-cpp-linux/{gpu_vendor}/{version}
+#  copies all files/folders from the script directory to $PREFIX/engine/llama-cpp-linux/{gpu_vendor}/{version}
 #  writes env vars to
 #    $PREFIX/env/llama/{gpu_vendor}/VERSION   (version number)
 #    $PREFIX/env/llama/{gpu_vendor}/{version}  (env variables)
@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
 ===============================================================
 
   Reads version from VERSION file in script directory.
-  Copies build_linux/bin/* to the engine folder.
+  Copies all files and folders from this directory to the engine folder.
 
   USAGE:
     ./install.sh --prefix=PATH --gpu_vendor=VENDOR
@@ -132,18 +132,19 @@ if [ ! -d "$TARGET_DIR" ]; then
     mkdir -p "$TARGET_DIR"
 fi
 
-echo "[src] $SCRIPT_DIR/build_linux/bin"
+echo "[src] $SCRIPT_DIR"
 echo "[dst] $TARGET_DIR"
 echo ""
 
 FILE_COUNT=0
 DIR_COUNT=0
-for f in "$SCRIPT_DIR/build_linux/bin"/*; do
+for f in "$SCRIPT_DIR"/*; do
     [ -e "$f" ] || continue
     fname=$(basename "$f")
-    if [ "$fname" = "install.sh" ]; then
-        continue
-    fi
+    # skip the install scripts and VERSION
+    case "$fname" in
+        install.sh|install.bat|VERSION) continue ;;
+    esac
     if [ -d "$f" ]; then
         DIR_COUNT=$((DIR_COUNT + 1))
         echo "[copy] $fname/"
