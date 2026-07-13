@@ -676,8 +676,12 @@ jobs:
           fi
           for f in "${files[@]}"; do
             echo "== $f =="
+            sha256=$(sha256sum "$f" | awk '{print $1}')
+            echo "sha256=$sha256"
             ./../ossutil64 cp "$f" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/$f" \
-              -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f
+              -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f \
+              --meta "x-oss-meta-sha256:$sha256"
             ./../ossutil64 cp "$f" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/latest/$f" \
-              -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f
+              -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f \
+              --meta "x-oss-meta-sha256:$sha256"
           done
