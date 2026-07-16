@@ -7057,6 +7057,40 @@ static void ggml_vk_instance_init() {
 
     std::vector<vk::PhysicalDevice> devices = vk_instance.instance.enumeratePhysicalDevices();
 
+    // Optional vendor allowlist (env: GGML_VK_VENDOR_FILTER). Only expose Vulkan
+    // devices whose vendorID is listed here, e.g. "0x10de" for NVIDIA-only. This
+    // is useful in a build that also enables a native GPU backend (cuda+vulkan,
+    // sycl+vulkan, rocm+vulkan) so that vulkanN refers to the same physical GPU as
+    // the corresponding native-backend device, instead of unrelated GPUs.
+    // Unset / empty / "all" / "any" / "0" -> no filtering (default).
+    // Note: GGML_VK_VISIBLE_DEVICES (explicit device indices, handled below) takes
+    // precedence and bypasses this filter.
+    std::set<uint32_t> vendor_allowlist;
+    if (const char * vkvf = getenv("GGML_VK_VENDOR_FILTER")) {
+        std::string s(vkvf);
+        std::replace(s.begin(), s.end(), ',', ' ');
+        std::stringstream ss(s);
+        std::string tok;
+        while (ss >> tok) {
+            std::string t = tok;
+            // strip optional 0x/0X prefix, then parse as hex
+            if (t.size() > 2 && t[0] == '0' && (t[1] == 'x' || t[1] == 'X')) {
+                t = t.substr(2);
+            }
+            if (t == "all" || t == "any" || t == "0" || t.empty()) {
+                continue;
+            }
+            try {
+                vendor_allowlist.insert((uint32_t) std::stoul(t, nullptr, 16));
+            } catch (...) {
+                std::cerr << "ggml_vulkan: ignoring invalid vendor id '" << tok << "' in GGML_VK_VENDOR_FILTER." << std::endl;
+            }
+        }
+    }
+    if (!vendor_allowlist.empty()) {
+        GGML_LOG_INFO("ggml_vulkan: vendor filter active, keeping only devices whose vendorID is listed in GGML_VK_VENDOR_FILTER\n");
+    }
+
     // Emulate behavior of CUDA_VISIBLE_DEVICES for Vulkan
     char * devices_env = getenv("GGML_VK_VISIBLE_DEVICES");
     if (devices_env != nullptr) {
@@ -7090,7 +7124,11 @@ static void ggml_vk_instance_init() {
             new_driver.pNext = &new_id;
             devices[i].getProperties2(&new_props);
 
-            if ((new_props.properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu || new_props.properties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) && ggml_vk_device_is_supported(devices[i])) {
+            const bool vendor_ok = vendor_allowlist.empty() ||
+                                   vendor_allowlist.count(new_props.properties.vendorID) != 0;
+            if (vendor_ok &&
+                (new_props.properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu || new_props.properties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) &&
+                ggml_vk_device_is_supported(devices[i])) {
                 // Check if there are two physical devices corresponding to the same GPU
                 // This handles the case where the same GPU appears with different drivers (e.g., RADV + AMDVLK on Linux),
                 // see https://github.com/ggml-org/llama.cpp/pull/7582 for original deduplication.
@@ -7182,7 +7220,10 @@ static void ggml_vk_instance_init() {
 
         // If no GPUs found, fall back to the first non-CPU device.
         // If only CPU devices are available, return without devices.
-        if (vk_instance.device_indices.empty()) {
+        // Skip this fallback when a vendor filter is active: if nothing matched the
+        // allowlist we intentionally expose no Vulkan devices (strict mode) rather
+        // than grabbing an unrelated vendor's GPU.
+        if (vk_instance.device_indices.empty() && vendor_allowlist.empty()) {
             for (size_t i = 0; i < devices.size(); i++) {
                 if (devices[i].getProperties().deviceType != vk::PhysicalDeviceType::eCpu) {
                     vk_instance.device_indices.push_back(i);
@@ -7194,6 +7235,37 @@ static void ggml_vk_instance_init() {
         if (vk_instance.device_indices.empty()) {
             GGML_LOG_INFO("ggml_vulkan: No devices found.\n");
             return;
+        }
+
+        // When coexisting with a native GPU backend (i.e. the vendor filter is
+        // active), sort the surviving Vulkan devices by PCI bus ID so that
+        // vulkanN refers to the same physical GPU as the native backend's device N
+        // (the native backends enumerate in PCI-bus-ID order). CUDA and Vulkan use
+        // different device-UUID schemes, so PCI bus ID is the shared physical key.
+        // Requires VK_EXT_pci_bus_info and more than one device; devices without
+        // the extension keep their relative order.
+        if (!vendor_allowlist.empty() && vk_instance.device_indices.size() > 1) {
+            auto pci_of = [&devices](size_t phys_idx) -> std::string {
+                const vk::PhysicalDevice pd = devices[phys_idx];
+                bool ext = false;
+                for (const auto & e : pd.enumerateDeviceExtensionProperties()) {
+                    if (strcmp("VK_EXT_pci_bus_info", e.extensionName) == 0) { ext = true; break; }
+                }
+                if (!ext) {
+                    return "";
+                }
+                vk::PhysicalDeviceProperties2 props = {};
+                vk::PhysicalDevicePCIBusInfoPropertiesEXT bus = {};
+                props.pNext = &bus;
+                pd.getProperties2(&props);
+                char buf[16] = {};
+                snprintf(buf, sizeof(buf), "%04x:%02x:%02x.%x",
+                         bus.pciDomain, bus.pciBus, bus.pciDevice, (uint8_t) bus.pciFunction);
+                return std::string(buf);
+            };
+            std::stable_sort(vk_instance.device_indices.begin(), vk_instance.device_indices.end(),
+                [&](size_t a, size_t b) { return pci_of(a) < pci_of(b); });
+            GGML_LOG_DEBUG("ggml_vulkan: sorted devices by PCI bus ID for cross-backend alignment\n");
         }
     }
     GGML_LOG_DEBUG("ggml_vulkan: Found %zu Vulkan devices:\n", vk_instance.device_indices.size());
@@ -18098,6 +18170,11 @@ static ggml_backend_dev_t ggml_backend_vk_reg_get_device(ggml_backend_reg_t reg,
                 ctx->description = desc;
                 ctx->is_integrated_gpu = ggml_backend_vk_get_device_type(i) == vk::PhysicalDeviceType::eIntegratedGpu;
                 ctx->pci_bus_id = ggml_backend_vk_get_device_pci_id(i);
+                if (!ctx->pci_bus_id.empty()) {
+                    // Surface the PCI bus ID in --list-devices so users can confirm
+                    // that vulkanN and the native backend's deviceN share a bus address.
+                    ctx->description += " [PCI " + ctx->pci_bus_id + "]";
+                }
                 ctx->op_offload_min_batch_size = min_batch_size;
                 devices.push_back(new ggml_backend_device {
                     /* .iface   = */ ggml_backend_vk_device_i,
