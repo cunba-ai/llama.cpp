@@ -157,7 +157,7 @@ jobs:
       - name: Dependencies
         run: |
           apt-get update -y
-          apt-get install -y build-essential libssl-dev ninja-build cmake pkg-config git wget gnupg ca-certificates
+          apt-get install -y build-essential libssl-dev ninja-build cmake pkg-config git wget gnupg ca-certificates p7zip-full
           # glslc is not in stock Ubuntu 22.04; pull it from the LunarG Vulkan SDK repo
           wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | apt-key add -
           wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
@@ -181,6 +181,7 @@ jobs:
             -DGGML_CUDA=ON \
             -DGGML_VULKAN=ON \
             -DGGML_CUDA_CUB_3DOT2=ON \
+            -DGGML_CUDA_NCCL=OFF \
             -DCMAKE_CUDA_ARCHITECTURES="${{ env.CUDA_ARCHS }}" \
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
@@ -198,13 +199,13 @@ jobs:
           echo "$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
-          tar -czvf llama-cuda-vulkan-ubuntu-x64.tar.gz -C build/bin .
+          7z a -snl llama-cuda-vulkan-ubuntu-x64.zip ./build/bin/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          path: llama-cuda-vulkan-ubuntu-x64.tar.gz
-          name: llama-cuda-vulkan-ubuntu-x64.tar.gz
+          path: llama-cuda-vulkan-ubuntu-x64.zip
+          name: llama-cuda-vulkan-ubuntu-x64.zip
 
   # ============================================================
   #  ROCm/HIP + Vulkan  (non-blocking)
@@ -351,7 +352,7 @@ jobs:
       - name: Dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential libssl-dev ninja-build wget gnupg ca-certificates
+          sudo apt-get install -y build-essential libssl-dev ninja-build wget gnupg ca-certificates p7zip-full
           # glslc is not in stock Ubuntu 22.04; pull it from the LunarG Vulkan SDK repo
           wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
           sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
@@ -413,13 +414,13 @@ jobs:
           echo "$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
-          tar -czvf llama-hip-vulkan-ubuntu-x64.tar.gz -C build/bin .
+          7z a -snl llama-hip-vulkan-ubuntu-x64.zip ./build/bin/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          path: llama-hip-vulkan-ubuntu-x64.tar.gz
-          name: llama-hip-vulkan-ubuntu-x64.tar.gz
+          path: llama-hip-vulkan-ubuntu-x64.zip
+          name: llama-hip-vulkan-ubuntu-x64.zip
 
   # ============================================================
   #  SYCL + Vulkan  (non-blocking)
@@ -548,7 +549,7 @@ jobs:
       - name: Dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential libssl-dev ninja-build libvulkan-dev glslc spirv-headers
+          sudo apt-get install -y build-essential libssl-dev ninja-build libvulkan-dev glslc spirv-headers p7zip-full
 
       - name: Cache oneAPI
         id: cache-oneapi
@@ -615,13 +616,13 @@ jobs:
           echo "$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
-          tar -czvf llama-sycl-vulkan-ubuntu-x64.tar.gz -C build/bin .
+          7z a -snl llama-sycl-vulkan-ubuntu-x64.zip ./build/bin/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          path: llama-sycl-vulkan-ubuntu-x64.tar.gz
-          name: llama-sycl-vulkan-ubuntu-x64.tar.gz
+          path: llama-sycl-vulkan-ubuntu-x64.zip
+          name: llama-sycl-vulkan-ubuntu-x64.zip
 
   # ============================================================
   #  Publish all built archives to Alibaba Cloud OSS
@@ -670,7 +671,7 @@ jobs:
           set -e
           cd artifact
           shopt -s nullglob
-          files=( *.zip *.tar.gz )
+          files=( *.zip )
           if [ ${#files[@]} -eq 0 ]; then
             echo "No archives to upload"; exit 0
           fi
@@ -685,3 +686,158 @@ jobs:
               -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f \
               --meta "x-oss-meta-sha256:$sha256"
           done
+
+  # ============================================================
+  #  Publish all built archives to Hugging Face datasets
+  #  (parallel to OSS; HF failure does not block OSS / ModelScope)
+  #  Target: datasets/cunba-ai/istation, path llama.cpp/{date}-{commit}
+  #  + llama.cpp/latest
+  # ============================================================
+  publish-hf:
+    runs-on: ubuntu-22.04
+    needs:
+      - cuda-vulkan-windows
+      - cuda-vulkan-ubuntu
+      - hip-vulkan-windows
+      - hip-vulkan-ubuntu
+      - sycl-vulkan-windows
+      - sycl-vulkan-ubuntu
+    env:
+      HF_REPO_ID: "cunba-ai/istation"
+      HF_FOLDER_IN_REPO: "llama.cpp"
+    steps:
+      - name: Clone
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute version strings
+        run: |
+          echo "BUILD_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
+          echo "COMMIT_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: ./artifact
+          merge-multiple: true
+
+      - name: Stage upload tree
+        # huggingface_hub uploads folder_path as-is, so build the in-repo layout
+        # locally: upload_root/llama.cpp/{date}-{commit}/*.archive and
+        # upload_root/llama.cpp/latest/*.archive
+        run: |
+          set -e
+          shopt -s nullglob
+          mkdir -p "upload_root/${{ env.HF_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}" \
+                   "upload_root/${{ env.HF_FOLDER_IN_REPO }}/latest"
+          files=( artifact/*.zip )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No archives to upload"; exit 0
+          fi
+          for f in "${files[@]}"; do
+            cp "$f" "upload_root/${{ env.HF_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/"
+            cp "$f" "upload_root/${{ env.HF_FOLDER_IN_REPO }}/latest/"
+          done
+          find upload_root -type f | sort
+
+      - name: Install huggingface_hub
+        run: pip install -U "huggingface_hub[cli]"
+
+      - name: Upload to Hugging Face dataset
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -e
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          repo_id = os.environ["HF_REPO_ID"]
+          folder_in_repo = os.environ["HF_FOLDER_IN_REPO"]
+          for sub in [os.environ["BUILD_DATE"] + "-" + os.environ["COMMIT_ID"], "latest"]:
+              api.upload_folder(
+                  repo_id=repo_id,
+                  repo_type="dataset",
+                  folder_path=f"upload_root/{folder_in_repo}/{sub}",
+                  path_in_repo=f"{folder_in_repo}/{sub}",
+                  commit_message=f"Upload llama.cpp {sub}",
+              )
+              print(f"uploaded -> {folder_in_repo}/{sub}")
+          PY
+
+  # ============================================================
+  #  Publish all built archives to ModelScope datasets
+  #  (parallel to OSS / HF; ModelScope failure does not block them)
+  #  Target: datasets/cunbaai/istation, path llama.cpp/{date}-{commit}
+  #  + llama.cpp/latest
+  #  ModelScope HubApi.upload_folder has no path_in_repo arg, so the local
+  #  folder_path must already carry the full in-repo subtree.
+  # ============================================================
+  publish-modelscope:
+    runs-on: ubuntu-22.04
+    needs:
+      - cuda-vulkan-windows
+      - cuda-vulkan-ubuntu
+      - hip-vulkan-windows
+      - hip-vulkan-ubuntu
+      - sycl-vulkan-windows
+      - sycl-vulkan-ubuntu
+    env:
+      MS_REPO_ID: "cunbaai/istation"
+      MS_FOLDER_IN_REPO: "llama.cpp"
+    steps:
+      - name: Clone
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute version strings
+        run: |
+          echo "BUILD_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
+          echo "COMMIT_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: ./artifact
+          merge-multiple: true
+
+      - name: Stage upload tree
+        run: |
+          set -e
+          shopt -s nullglob
+          mkdir -p "upload_root/${{ env.MS_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}" \
+                   "upload_root/${{ env.MS_FOLDER_IN_REPO }}/latest"
+          files=( artifact/*.zip )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No archives to upload"; exit 0
+          fi
+          for f in "${files[@]}"; do
+            cp "$f" "upload_root/${{ env.MS_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/"
+            cp "$f" "upload_root/${{ env.MS_FOLDER_IN_REPO }}/latest/"
+          done
+          find upload_root -type f | sort
+
+      - name: Install modelscope
+        run: pip install -U modelscope
+
+      - name: Upload to ModelScope dataset
+        env:
+          MODELSCOPE_API_TOKEN: ${{ secrets.MODELSCOPE_API_TOKEN }}
+        run: |
+          set -e
+          python - <<'PY'
+          import os
+          from modelscope.hub.api import HubApi
+          api = HubApi(api_key=os.environ["MODELSCOPE_API_TOKEN"])
+          repo_id = os.environ["MS_REPO_ID"]
+          folder_in_repo = os.environ["MS_FOLDER_IN_REPO"]
+          for sub in [os.environ["BUILD_DATE"] + "-" + os.environ["COMMIT_ID"], "latest"]:
+              api.upload_folder(
+                  repo_id=repo_id,
+                  repo_type="dataset",
+                  folder_path=f"upload_root/{folder_in_repo}/{sub}",
+              )
+              print(f"uploaded -> {folder_in_repo}/{sub}")
+          PY
