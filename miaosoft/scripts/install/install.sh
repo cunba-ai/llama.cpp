@@ -115,7 +115,16 @@ set_env() {
     local value="$2"
     echo "[setenv] $key=$value"
     if [ -f "$ENV_FILE" ]; then
-        sed -i "/^$key=/d" "$ENV_FILE"
+        # drop any existing line for this key by rewriting the file.
+        # grep + cat (instead of `sed -i`) avoids "Operation not permitted"
+        # warnings on mounted/NTFS/drvfs filesystems where sed cannot restore
+        # file permissions in place; writing back with cat keeps the original
+        # inode and permissions. `|| true` guards set -e when grep has no match.
+        local tmp
+        tmp=$(mktemp)
+        grep -v "^$key=" "$ENV_FILE" > "$tmp" || true
+        cat "$tmp" > "$ENV_FILE"
+        rm -f "$tmp"
     fi
     echo "$key=\"$value\"" >> "$ENV_FILE"
 }
