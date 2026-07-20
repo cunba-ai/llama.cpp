@@ -771,8 +771,6 @@ jobs:
   #  (parallel to OSS / HF; ModelScope failure does not block them)
   #  Target: datasets/cunbaai/istation, path llama.cpp/{date}-{commit}
   #  + llama.cpp/latest
-  #  ModelScope HubApi.upload_folder has no path_in_repo arg, so the local
-  #  folder_path must already carry the full in-repo subtree.
   # ============================================================
   publish-modelscope:
     runs-on: ubuntu-22.04
@@ -838,6 +836,8 @@ jobs:
                   repo_id=repo_id,
                   repo_type="dataset",
                   folder_path=f"upload_root/{folder_in_repo}/{sub}",
+                  path_in_repo=f"{folder_in_repo}/{sub}",
+                  commit_message=f"Upload llama.cpp {sub}",
               )
               print(f"uploaded -> {folder_in_repo}/{sub}")
           PY
