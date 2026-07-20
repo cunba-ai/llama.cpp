@@ -363,6 +363,8 @@ jobs:
   hip-vulkan-ubuntu:
     continue-on-error: true
     runs-on: ubuntu-22.04
+    env:
+      ROCM_VERSION: "7.2.1"
     steps:
       - name: Clone
         uses: actions/checkout@v6
@@ -384,13 +386,21 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y vulkan-sdk
 
-      - name: Setup ROCm 7.2.1
+      - name: Cache ROCm Installation
+        id: cache-rocm
+        uses: actions/cache@v5
+        with:
+          path: /opt/rocm
+          key: cache-gha-rocm-${{ env.ROCM_VERSION }}-${{ runner.os }}
+
+      - name: Setup ROCm ${{ env.ROCM_VERSION }}
+        if: steps.cache-rocm.outputs.cache-hit != 'true'
         run: |
           sudo mkdir --parents --mode=0755 /etc/apt/keyrings
           wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | \
             gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
           sudo tee /etc/apt/sources.list.d/rocm.list << EOF
-          deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2.1 jammy main
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${{ env.ROCM_VERSION }} jammy main
           EOF
           sudo tee /etc/apt/preferences.d/rocm-pin-600 << EOF
           Package: *
