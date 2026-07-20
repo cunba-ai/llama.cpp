@@ -830,7 +830,7 @@ jobs:
           python - <<'PY'
           import os
           from modelscope.hub.api import HubApi
-          api = HubApi(api_key=os.environ["MODELSCOPE_API_TOKEN"])
+          api = HubApi(token=os.environ["MODELSCOPE_API_TOKEN"])
           repo_id = os.environ["MS_REPO_ID"]
           folder_in_repo = os.environ["MS_FOLDER_IN_REPO"]
           for sub in [os.environ["BUILD_DATE"] + "-" + os.environ["COMMIT_ID"], "latest"]:
