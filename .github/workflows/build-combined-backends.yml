@@ -101,6 +101,13 @@ jobs:
       - name: Install Ninja
         run: choco install ninja
 
+      - name: Compute version
+        shell: bash
+        run: |
+          echo "BUILD_NUMBER=$(date -u +%y%m%d)"        >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(date -u +%Y%m%d)"          >> "$GITHUB_ENV"
+          echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"      >> "$GITHUB_ENV"
+
       - name: ccache
         uses: ggml-org/ccache-action@v1.2.21
         with:
@@ -118,6 +125,8 @@ jobs:
             -DGGML_VULKAN=ON ^
             -DGGML_CUDA_CUB_3DOT2=ON ^
             -DCMAKE_CUDA_ARCHITECTURES="${{ env.CUDA_ARCHS }}" ^
+            -DLLAMA_BUILD_NUMBER=%BUILD_NUMBER% ^
+            -DLLAMA_BUILD_COMMIT=%COMMIT_ID_SHORT% ^
             ${{ env.CMAKE_ARGS }}
           set /A NINJA_JOBS=%NUMBER_OF_PROCESSORS%-1
           cmake --build build --config Release -j %NINJA_JOBS% --target llama-cli llama-server ggml-rpc-server
@@ -130,13 +139,12 @@ jobs:
           if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" } else { $global:LASTEXITCODE = 0 }
 
       - name: Pack artifacts
+        shell: bash
         run: |
-          $bd = (Get-Date).ToUniversalTime().ToString("yyyyMMdd")
-          $ci = (git rev-parse --short HEAD)
-          Set-Content -Path .\build\bin\Release\VERSION -Value "$bd-$ci" -NoNewline -Encoding ascii
-          Copy-Item miaosoft\scripts\install\install.bat .\build\bin\Release\install.bat -Force
-          Copy-Item LICENSE .\build\bin\Release\ -Force
-          7z a -snl llama-cuda-vulkan-windows-x64.zip .\build\bin\Release\*
+          printf '%s-%s' "$BUILD_DATE" "$COMMIT_ID_SHORT" > ./build/bin/Release/VERSION
+          cp miaosoft/scripts/install/install.bat ./build/bin/Release/install.bat
+          cp LICENSE ./build/bin/Release/
+          7z a -snl llama-cuda-vulkan-windows-x64.zip ./build/bin/Release/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
@@ -169,6 +177,12 @@ jobs:
         with:
           key: combined-ubuntu-22.04-cuda-12.8
 
+      - name: Compute version
+        run: |
+          echo "BUILD_NUMBER=$(date -u +%y%m%d)"     >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(date -u +%Y%m%d)"       >> "$GITHUB_ENV"
+          echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"   >> "$GITHUB_ENV"
+
       - name: Build
         run: |
           cmake -B build \
@@ -183,6 +197,8 @@ jobs:
             -DGGML_CUDA_CUB_3DOT2=ON \
             -DGGML_CUDA_NCCL=OFF \
             -DCMAKE_CUDA_ARCHITECTURES="${{ env.CUDA_ARCHS }}" \
+            -DLLAMA_BUILD_NUMBER="$BUILD_NUMBER" \
+            -DLLAMA_BUILD_COMMIT="$COMMIT_ID_SHORT" \
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
 
@@ -196,7 +212,7 @@ jobs:
 
       - name: Pack artifacts
         run: |
-          echo "$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)" > build/bin/VERSION
+          echo "$BUILD_DATE-$COMMIT_ID_SHORT" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
           7z a -snl llama-cuda-vulkan-ubuntu-x64.zip ./build/bin/*
@@ -279,6 +295,13 @@ jobs:
         with:
           key: combined-windows-2022-hip
 
+      - name: Compute version
+        shell: bash
+        run: |
+          echo "BUILD_NUMBER=$(date -u +%y%m%d)"        >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(date -u +%Y%m%d)"          >> "$GITHUB_ENV"
+          echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"      >> "$GITHUB_ENV"
+
       - name: Build
         run: |
           $env:HIP_PATH=$(Resolve-Path 'C:\Program Files\AMD\ROCm\*\bin\clang.exe' | split-path | split-path)
@@ -305,6 +328,8 @@ jobs:
             -DGGML_HIP_ROCWMMA_FATTN=ON `
             -DGGML_HIP=ON `
             -DGGML_VULKAN=ON `
+            -DLLAMA_BUILD_NUMBER="$env:BUILD_NUMBER" `
+            -DLLAMA_BUILD_COMMIT="$env:COMMIT_ID_SHORT" `
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j ${env:NUMBER_OF_PROCESSORS} --target llama-cli llama-server ggml-rpc-server
 
@@ -321,13 +346,12 @@ jobs:
           Copy-Item "$src\hipblaslt\library\*" "$dst\hipblaslt\library\" -Force -ErrorAction SilentlyContinue
 
       - name: Pack artifacts
+        shell: bash
         run: |
-          $bd = (Get-Date).ToUniversalTime().ToString("yyyyMMdd")
-          $ci = (git rev-parse --short HEAD)
-          Set-Content -Path .\build\bin\VERSION -Value "$bd-$ci" -NoNewline -Encoding ascii
-          Copy-Item miaosoft\scripts\install\install.bat .\build\bin\install.bat -Force
-          Copy-Item LICENSE .\build\bin\ -Force
-          7z a -snl llama-hip-vulkan-windows-x64.zip .\build\bin\*
+          printf '%s-%s' "$BUILD_DATE" "$COMMIT_ID_SHORT" > ./build/bin/VERSION
+          cp miaosoft/scripts/install/install.bat ./build/bin/install.bat
+          cp LICENSE ./build/bin/
+          7z a -snl llama-hip-vulkan-windows-x64.zip ./build/bin/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
@@ -383,6 +407,12 @@ jobs:
         with:
           key: combined-ubuntu-22.04-hip
 
+      - name: Compute version
+        run: |
+          echo "BUILD_NUMBER=$(date -u +%y%m%d)"     >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(date -u +%Y%m%d)"       >> "$GITHUB_ENV"
+          echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"   >> "$GITHUB_ENV"
+
       - name: Build
         run: |
           cmake -B build -S . \
@@ -398,6 +428,8 @@ jobs:
             -DGGML_HIP_ROCWMMA_FATTN=ON \
             -DGGML_HIP=ON \
             -DGGML_VULKAN=ON \
+            -DLLAMA_BUILD_NUMBER="$BUILD_NUMBER" \
+            -DLLAMA_BUILD_COMMIT="$COMMIT_ID_SHORT" \
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
 
@@ -411,7 +443,7 @@ jobs:
 
       - name: Pack artifacts
         run: |
-          echo "$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)" > build/bin/VERSION
+          echo "$BUILD_DATE-$COMMIT_ID_SHORT" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
           7z a -snl llama-hip-vulkan-ubuntu-x64.zip ./build/bin/*
@@ -477,6 +509,13 @@ jobs:
         with:
           key: combined-windows-2022-sycl
 
+      - name: Compute version
+        shell: bash
+        run: |
+          echo "BUILD_NUMBER=$(date -u +%y%m%d)"        >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(date -u +%Y%m%d)"          >> "$GITHUB_ENV"
+          echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"      >> "$GITHUB_ENV"
+
       - name: Build
         shell: cmd
         run: |
@@ -488,6 +527,8 @@ jobs:
             -DGGML_NATIVE=OFF ^
             -DGGML_SYCL=ON -DGGML_SYCL_F16=OFF ^
             -DGGML_VULKAN=ON ^
+            -DLLAMA_BUILD_NUMBER=%BUILD_NUMBER% ^
+            -DLLAMA_BUILD_COMMIT=%COMMIT_ID_SHORT% ^
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j %NUMBER_OF_PROCESSORS% --target llama-cli llama-server ggml-rpc-server
 
@@ -514,9 +555,7 @@ jobs:
       - name: Pack artifacts
         shell: bash
         run: |
-          bd=$(date -u +%Y%m%d)
-          ci=$(git rev-parse --short HEAD)
-          printf '%s-%s' "$bd" "$ci" > ./build/bin/VERSION
+          printf '%s-%s' "$BUILD_DATE" "$COMMIT_ID_SHORT" > ./build/bin/VERSION
           cp miaosoft/scripts/install/install.bat ./build/bin/install.bat
           cp LICENSE ./build/bin/
           # build/bin holds the exes + dlls (Ninja single-config puts outputs in build/bin)
@@ -577,6 +616,12 @@ jobs:
         with:
           key: combined-ubuntu-24.04-sycl
 
+      - name: Compute version
+        run: |
+          echo "BUILD_NUMBER=$(date -u +%y%m%d)"     >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(date -u +%Y%m%d)"       >> "$GITHUB_ENV"
+          echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"   >> "$GITHUB_ENV"
+
       - name: Build
         run: |
           source /opt/intel/oneapi/setvars.sh
@@ -593,6 +638,8 @@ jobs:
             -DGGML_NATIVE=OFF \
             -DCMAKE_C_COMPILER=icx \
             -DCMAKE_CXX_COMPILER=icpx \
+            -DLLAMA_BUILD_NUMBER="$BUILD_NUMBER" \
+            -DLLAMA_BUILD_COMMIT="$COMMIT_ID_SHORT" \
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
 
@@ -613,7 +660,7 @@ jobs:
 
       - name: Pack artifacts
         run: |
-          echo "$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)" > build/bin/VERSION
+          echo "$BUILD_DATE-$COMMIT_ID_SHORT" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
           7z a -snl llama-sycl-vulkan-ubuntu-x64.zip ./build/bin/*
@@ -645,8 +692,8 @@ jobs:
 
       - name: Compute version strings
         run: |
-          echo "BUILD_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
-          echo "COMMIT_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +%Y%m%d)"     >> $GITHUB_ENV
+          echo "COMMIT_ID=${GITHUB_SHA:0:8}"       >> $GITHUB_ENV
 
       - name: Download artifacts
         uses: actions/download-artifact@v7
@@ -713,8 +760,8 @@ jobs:
 
       - name: Compute version strings
         run: |
-          echo "BUILD_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
-          echo "COMMIT_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +%Y%m%d)"     >> $GITHUB_ENV
+          echo "COMMIT_ID=${GITHUB_SHA:0:8}"       >> $GITHUB_ENV
 
       - name: Download artifacts
         uses: actions/download-artifact@v7
@@ -792,8 +839,8 @@ jobs:
 
       - name: Compute version strings
         run: |
-          echo "BUILD_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
-          echo "COMMIT_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +%Y%m%d)"     >> $GITHUB_ENV
+          echo "COMMIT_ID=${GITHUB_SHA:0:8}"       >> $GITHUB_ENV
 
       - name: Download artifacts
         uses: actions/download-artifact@v7
