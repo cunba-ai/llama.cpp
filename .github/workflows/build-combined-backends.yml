@@ -38,7 +38,7 @@ permissions:
 env:
   GH_TOKEN: ${{ github.token }}
   CMAKE_ARGS: "-DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON -DGGML_RPC=ON -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_OPENSSL=OFF"
-  CUDA_ARCHS: "60;61;70;75;80;86;89;90"
+  CUDA_ARCHS: "61;70;75;80;86;89;120"
   AMDGPU_TARGETS: "gfx1100;gfx1101;gfx1102;gfx1150;gfx1151;gfx1200;gfx1201"
   VULKAN_VERSION: "1.4.313.2"
   OSS_BUCKET: "miaosoft-internal"
@@ -51,7 +51,7 @@ concurrency:
 
 jobs:
   # ============================================================
-  #  CUDA 12.8 + Vulkan
+  #  CUDA 13.1 + Vulkan
   # ============================================================
   cuda-vulkan-windows:
     runs-on: windows-2022
@@ -61,24 +61,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache CUDA Toolkit 12.8
+      - name: Cache CUDA Toolkit 13.1
         id: cache-cuda
         uses: actions/cache@v5
         with:
-          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8
-          key: cuda-12.8-redist-v1   # bump if windows-setup-cuda 12.8 step changes
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1
+          key: cuda-13.1-redist-v1   # bump if windows-setup-cuda 13.1 step changes
 
-      - name: Install CUDA Toolkit 12.8
+      - name: Install CUDA Toolkit 13.1
         if: steps.cache-cuda.outputs.cache-hit != 'true'
         uses: ./.github/actions/windows-setup-cuda
         with:
-          cuda_version: '12.8'
+          cuda_version: '13.1'
 
       - name: Configure CUDA env
         run: |
-          echo "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\libnvvp" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          echo "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Cache Vulkan SDK
         id: cache-vulkan
@@ -111,7 +110,7 @@ jobs:
       - name: ccache
         uses: ggml-org/ccache-action@v1.2.21
         with:
-          key: combined-windows-2022-cuda-12.8
+          key: combined-windows-2022-cuda-13.1
 
       - name: Build
         shell: cmd
@@ -125,6 +124,7 @@ jobs:
             -DGGML_VULKAN=ON ^
             -DGGML_CUDA_CUB_3DOT2=ON ^
             -DCMAKE_CUDA_ARCHITECTURES="${{ env.CUDA_ARCHS }}" ^
+            -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache ^
             -DLLAMA_BUILD_NUMBER=%BUILD_NUMBER% ^
             -DLLAMA_BUILD_COMMIT=%COMMIT_ID_SHORT% ^
             ${{ env.CMAKE_ARGS }}
@@ -155,7 +155,7 @@ jobs:
   cuda-vulkan-ubuntu:
     runs-on: ubuntu-22.04
     container:
-      image: nvidia/cuda:12.8.0-devel-ubuntu22.04
+      image: nvidia/cuda:13.1.0-devel-ubuntu22.04
     steps:
       - name: Clone
         uses: actions/checkout@v6
@@ -175,7 +175,7 @@ jobs:
       - name: ccache
         uses: ggml-org/ccache-action@v1.2.21
         with:
-          key: combined-ubuntu-22.04-cuda-12.8
+          key: combined-ubuntu-22.04-cuda-13.1
 
       - name: Compute version
         shell: bash
@@ -198,6 +198,7 @@ jobs:
             -DGGML_CUDA_CUB_3DOT2=ON \
             -DGGML_CUDA_NCCL=OFF \
             -DCMAKE_CUDA_ARCHITECTURES="${{ env.CUDA_ARCHS }}" \
+            -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
             -DLLAMA_BUILD_NUMBER="$BUILD_NUMBER" \
             -DLLAMA_BUILD_COMMIT="$COMMIT_ID_SHORT" \
             ${{ env.CMAKE_ARGS }}
@@ -328,6 +329,7 @@ jobs:
             -DGPU_TARGETS="${{ env.AMDGPU_TARGETS }}" `
             -DGGML_HIP_ROCWMMA_FATTN=ON `
             -DGGML_HIP=ON `
+            -DCMAKE_HIP_COMPILER_LAUNCHER=ccache `
             -DGGML_VULKAN=ON `
             -DLLAMA_BUILD_NUMBER="$env:BUILD_NUMBER" `
             -DLLAMA_BUILD_COMMIT="$env:COMMIT_ID_SHORT" `
@@ -429,6 +431,7 @@ jobs:
             -DHIP_PLATFORM=amd \
             -DGGML_HIP_ROCWMMA_FATTN=ON \
             -DGGML_HIP=ON \
+            -DCMAKE_HIP_COMPILER_LAUNCHER=ccache \
             -DGGML_VULKAN=ON \
             -DLLAMA_BUILD_NUMBER="$BUILD_NUMBER" \
             -DLLAMA_BUILD_COMMIT="$COMMIT_ID_SHORT" \
