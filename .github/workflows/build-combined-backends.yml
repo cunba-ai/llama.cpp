@@ -51,7 +51,7 @@ concurrency:
 
 jobs:
   # ============================================================
-  #  CUDA 13.1 + Vulkan
+  #  CUDA 12.9 + Vulkan
   # ============================================================
   cuda-vulkan-windows:
     runs-on: windows-2022
@@ -61,23 +61,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache CUDA Toolkit 13.1
-        id: cache-cuda
-        uses: actions/cache@v5
+      - name: Setup CUDA Toolkit 12.9
+        uses: Jimver/cuda-toolkit@v0.2.35
         with:
-          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1
-          key: cuda-13.1-redist-v1   # bump if windows-setup-cuda 13.1 step changes
-
-      - name: Install CUDA Toolkit 13.1
-        if: steps.cache-cuda.outputs.cache-hit != 'true'
-        uses: ./.github/actions/windows-setup-cuda
-        with:
-          cuda_version: '13.1'
-
-      - name: Configure CUDA env
-        run: |
-          echo "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          cuda: '12.9.0'
+          method: 'network'
 
       - name: Cache Vulkan SDK
         id: cache-vulkan
@@ -110,7 +98,7 @@ jobs:
       - name: ccache
         uses: ggml-org/ccache-action@v1.2.21
         with:
-          key: combined-windows-2022-cuda-13.1
+          key: combined-windows-2022-cuda-12.9
 
       - name: Build
         shell: cmd
@@ -155,7 +143,7 @@ jobs:
   cuda-vulkan-ubuntu:
     runs-on: ubuntu-22.04
     container:
-      image: nvidia/cuda:13.1.0-devel-ubuntu22.04
+      image: nvidia/cuda:12.9.1-devel-ubuntu22.04
     steps:
       - name: Clone
         uses: actions/checkout@v6
@@ -175,7 +163,7 @@ jobs:
       - name: ccache
         uses: ggml-org/ccache-action@v1.2.21
         with:
-          key: combined-ubuntu-22.04-cuda-13.1
+          key: combined-ubuntu-22.04-cuda-12.9
 
       - name: Compute version
         shell: bash
