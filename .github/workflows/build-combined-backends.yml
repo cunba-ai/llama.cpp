@@ -126,6 +126,16 @@ jobs:
           # robocopy returns non-zero on success (codes <8); reset so the step does not fail
           if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" } else { $global:LASTEXITCODE = 0 }
 
+      - name: Bundle MSVC runtime DLLs
+        # Ship the VC++ runtime next to the exes (exe dir is searched before
+        # System32) so a stale/corrupt system MSVCP140.dll can't crash them.
+        run: |
+          $dst='.\build\bin\Release'
+          $crt=(Get-ChildItem 'C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT' -Directory -ErrorAction SilentlyContinue | Select-Object -First 1)
+          if (-not $crt) { $crt=Get-Item 'C:\Windows\System32' }
+          Copy-Item "$($crt.FullName)\MSVCP140.dll","$($crt.FullName)\VCRUNTIME140.dll","$($crt.FullName)\VCRUNTIME140_1.dll" $dst -Force
+          Get-ChildItem "$dst\MSVCP140.dll","$dst\VCRUNTIME140.dll","$dst\VCRUNTIME140_1.dll" | Format-Table Name,Length,@{n='Ver';e={$_.VersionInfo.FileVersion}}
+
       - name: Pack artifacts
         shell: bash
         run: |
@@ -336,6 +346,16 @@ jobs:
           Copy-Item "$src\rocblas\library\*" "$dst\rocblas\library\" -Force -ErrorAction SilentlyContinue
           Copy-Item "$src\hipblaslt\library\*" "$dst\hipblaslt\library\" -Force -ErrorAction SilentlyContinue
 
+      - name: Bundle MSVC runtime DLLs
+        # Ship the VC++ runtime next to the exes (exe dir is searched before
+        # System32) so a stale/corrupt system MSVCP140.dll can't crash them.
+        run: |
+          $dst='.\build\bin'
+          $crt=(Get-ChildItem 'C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT' -Directory -ErrorAction SilentlyContinue | Select-Object -First 1)
+          if (-not $crt) { $crt=Get-Item 'C:\Windows\System32' }
+          Copy-Item "$($crt.FullName)\MSVCP140.dll","$($crt.FullName)\VCRUNTIME140.dll","$($crt.FullName)\VCRUNTIME140_1.dll" $dst -Force
+          Get-ChildItem "$dst\MSVCP140.dll","$dst\VCRUNTIME140.dll","$dst\VCRUNTIME140_1.dll" | Format-Table Name,Length,@{n='Ver';e={$_.VersionInfo.FileVersion}}
+
       - name: Pack artifacts
         shell: bash
         run: |
@@ -544,6 +564,16 @@ jobs:
           cp "${{ env.ONEAPI_ROOT }}/compiler/latest/bin/libiomp5md.dll" ./build/bin 2>/dev/null || true
           cp "${{ env.ONEAPI_ROOT }}/dnnl/latest/bin/dnnl.dll" ./build/bin 2>/dev/null || true
           cp "${{ env.ONEAPI_ROOT }}/tbb/latest/bin/tbb12.dll" ./build/bin 2>/dev/null || true
+
+      - name: Bundle MSVC runtime DLLs
+        # Ship the VC++ runtime next to the exes (exe dir is searched before
+        # System32) so a stale/corrupt system MSVCP140.dll can't crash them.
+        run: |
+          $dst='.\build\bin'
+          $crt=(Get-ChildItem 'C:\Program Files\Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT' -Directory -ErrorAction SilentlyContinue | Select-Object -First 1)
+          if (-not $crt) { $crt=Get-Item 'C:\Windows\System32' }
+          Copy-Item "$($crt.FullName)\MSVCP140.dll","$($crt.FullName)\VCRUNTIME140.dll","$($crt.FullName)\VCRUNTIME140_1.dll" $dst -Force
+          Get-ChildItem "$dst\MSVCP140.dll","$dst\VCRUNTIME140.dll","$dst\VCRUNTIME140_1.dll" | Format-Table Name,Length,@{n='Ver';e={$_.VersionInfo.FileVersion}}
 
       - name: Pack artifacts
         shell: bash
