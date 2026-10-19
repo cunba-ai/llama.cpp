@@ -754,17 +754,13 @@ jobs:
             ./../ossutil64 cp "$f" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/$f" \
               -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f \
               --meta "x-oss-meta-sha256:$sha256"
-            ./../ossutil64 cp "$f" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/latest/$f" \
-              -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f \
-              --meta "x-oss-meta-sha256:$sha256"
           done
 
   # ============================================================
   #  Publish all built archives to Hugging Face datasets
   #  (parallel to OSS; HF failure does not block OSS / ModelScope)
   #  Target: datasets/cunba-ai/istation, path llama.cpp/{date}-{commit}
-  #  + llama.cpp/latest
-  # ============================================================
+    # ============================================================
   publish-hf:
     runs-on: ubuntu-22.04
     needs:
@@ -797,20 +793,18 @@ jobs:
 
       - name: Stage upload tree
         # huggingface_hub uploads folder_path as-is, so build the in-repo layout
-        # locally: upload_root/llama.cpp/{date}-{commit}/*.archive and
-        # upload_root/llama.cpp/latest/*.archive
+        # locally: upload_root/llama.cpp/{date}-{commit}/*.archive
+        # (发布布局 v2: latest/ 目录退役, 只传版本目录)
         run: |
           set -e
           shopt -s nullglob
-          mkdir -p "upload_root/${{ env.HF_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}" \
-                   "upload_root/${{ env.HF_FOLDER_IN_REPO }}/latest"
+          mkdir -p "upload_root/${{ env.HF_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}"
           files=( artifact/*.zip )
           if [ ${#files[@]} -eq 0 ]; then
             echo "No archives to upload"; exit 0
           fi
           for f in "${files[@]}"; do
             cp "$f" "upload_root/${{ env.HF_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/"
-            cp "$f" "upload_root/${{ env.HF_FOLDER_IN_REPO }}/latest/"
           done
           find upload_root -type f | sort
 
@@ -828,7 +822,7 @@ jobs:
           api = HfApi(token=os.environ["HF_TOKEN"])
           repo_id = os.environ["HF_REPO_ID"]
           folder_in_repo = os.environ["HF_FOLDER_IN_REPO"]
-          for sub in [os.environ["BUILD_DATE"] + "-" + os.environ["COMMIT_ID"], "latest"]:
+          for sub in [os.environ["BUILD_DATE"] + "-" + os.environ["COMMIT_ID"]]:
               api.upload_folder(
                   repo_id=repo_id,
                   repo_type="dataset",
@@ -843,8 +837,7 @@ jobs:
   #  Publish all built archives to ModelScope datasets
   #  (parallel to OSS / HF; ModelScope failure does not block them)
   #  Target: datasets/cunbaai/istation, path llama.cpp/{date}-{commit}
-  #  + llama.cpp/latest
-  # ============================================================
+    # ============================================================
   publish-modelscope:
     runs-on: ubuntu-22.04
     needs:
@@ -879,15 +872,13 @@ jobs:
         run: |
           set -e
           shopt -s nullglob
-          mkdir -p "upload_root/${{ env.MS_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}" \
-                   "upload_root/${{ env.MS_FOLDER_IN_REPO }}/latest"
+          mkdir -p "upload_root/${{ env.MS_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}"
           files=( artifact/*.zip )
           if [ ${#files[@]} -eq 0 ]; then
             echo "No archives to upload"; exit 0
           fi
           for f in "${files[@]}"; do
             cp "$f" "upload_root/${{ env.MS_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/"
-            cp "$f" "upload_root/${{ env.MS_FOLDER_IN_REPO }}/latest/"
           done
           find upload_root -type f | sort
 
@@ -905,7 +896,7 @@ jobs:
           api = HubApi(token=os.environ["MODELSCOPE_API_TOKEN"])
           repo_id = os.environ["MS_REPO_ID"]
           folder_in_repo = os.environ["MS_FOLDER_IN_REPO"]
-          for sub in [os.environ["BUILD_DATE"] + "-" + os.environ["COMMIT_ID"], "latest"]:
+          for sub in [os.environ["BUILD_DATE"] + "-" + os.environ["COMMIT_ID"]]:
               api.upload_folder(
                   repo_id=repo_id,
                   repo_type="dataset",
