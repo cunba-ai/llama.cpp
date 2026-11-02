@@ -91,6 +91,12 @@ jobs:
     if: github.event_name == 'schedule' || inputs.touch-only == true
     runs-on: windows-2022
     steps:
+      # checkout present: every restore that ever HIT ran in a job with a
+      # checkout; every restore that MISSED ran without one (probed
+      # 2026-11-02). Not explained by docs, but cheap to satisfy.
+      - name: Clone
+        uses: actions/checkout@v6
+
       - name: ccache combined-windows-2022-cuda-12.9
         continue-on-error: true
         uses: actions/cache/restore@v5
@@ -133,6 +139,9 @@ jobs:
     if: github.event_name == 'schedule' || inputs.touch-only == true
     runs-on: ubuntu-22.04
     steps:
+      - name: Clone
+        uses: actions/checkout@v6
+
       - name: ccache combined-ubuntu-22.04-cuda-12.9
         continue-on-error: true
         uses: actions/cache/restore@v5
@@ -153,6 +162,9 @@ jobs:
     if: github.event_name == 'schedule' || inputs.touch-only == true
     runs-on: ubuntu-24.04
     steps:
+      - name: Clone
+        uses: actions/checkout@v6
+
       - name: ccache combined-ubuntu-24.04-sycl
         continue-on-error: true
         uses: actions/cache/restore@v5
@@ -794,6 +806,8 @@ jobs:
           echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"   >> "$GITHUB_ENV"
 
       - name: Build
+        # container steps default to sh (dash), where `source` does not exist
+        shell: bash
         run: |
           source /opt/intel/oneapi/setvars.sh
           cmake -B build \
