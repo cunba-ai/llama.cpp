@@ -102,7 +102,14 @@ jobs:
             exit 0
           fi
           echo "Building $IMG:$TAG (Dockerfile changed or first run)"
-          docker build -t "$IMG:$TAG" -t "$IMG:latest" -f "miaosoft/ci-images/${{ matrix.name }}.Dockerfile" .
+          # Pull the previous image as build cache so unchanged heavy layers
+          # (Vulkan/ROCm/oneAPI) are reused instead of rebuilt.
+          docker pull -q "$IMG:latest" 2>/dev/null || true
+          docker build \
+            --cache-from "$IMG:latest" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            -t "$IMG:$TAG" -t "$IMG:latest" \
+            -f "miaosoft/ci-images/${{ matrix.name }}.Dockerfile" .
           docker push "$IMG:$TAG"
           docker push "$IMG:latest"
 

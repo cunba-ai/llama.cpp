@@ -12,7 +12,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential libssl-dev ninja-build cmake pkg-config git \
+        build-essential libssl-dev ninja-build cmake ccache pkg-config git \
         wget gnupg ca-certificates p7zip-full \
     && rm -rf /var/lib/apt/lists/*
 

@@ -13,7 +13,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential libssl-dev ninja-build cmake pkg-config git wget \
+        build-essential libssl-dev ninja-build cmake ccache pkg-config git wget \
         ca-certificates p7zip-full libvulkan-dev glslc spirv-headers \
     && rm -rf /var/lib/apt/lists/*
 
