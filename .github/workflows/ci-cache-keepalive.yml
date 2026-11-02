@@ -10,8 +10,12 @@ name: CI cache keepalive
 # actions/cache/restore just logs "not found", so this is a no-op until the
 # build workflow has created the caches once.
 #
+# Every step has continue-on-error so one flaky download cannot abort the
+# remaining refreshes - an untouched cache would expire 7 days later.
+#
 # The ccache-* restores use restore-keys prefixes because ccache-action
-# appends a timestamp to every saved key.
+# appends a timestamp to every saved key; the prefix matches the newest
+# entry, which is also the one the next build run restores.
 
 on:
   schedule:
@@ -26,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: ccache combined-windows-2022-cuda-12.9
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: cache-touch
@@ -33,6 +38,7 @@ jobs:
           restore-keys: ccache-combined-windows-2022-cuda-12.9-
 
       - name: ccache combined-ubuntu-22.04-cuda-12.9
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: cache-touch
@@ -40,6 +46,7 @@ jobs:
           restore-keys: ccache-combined-ubuntu-22.04-cuda-12.9-
 
       - name: ccache combined-windows-2022-hip
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: cache-touch
@@ -47,6 +54,7 @@ jobs:
           restore-keys: ccache-combined-windows-2022-hip-
 
       - name: ccache combined-ubuntu-22.04-hip
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: cache-touch
@@ -54,6 +62,7 @@ jobs:
           restore-keys: ccache-combined-ubuntu-22.04-hip-
 
       - name: ccache combined-windows-2022-sycl
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: cache-touch
@@ -61,6 +70,7 @@ jobs:
           restore-keys: ccache-combined-windows-2022-sycl-
 
       - name: ccache combined-ubuntu-24.04-sycl
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: cache-touch
@@ -68,12 +78,14 @@ jobs:
           restore-keys: ccache-combined-ubuntu-24.04-sycl-
 
       - name: vulkan-sdk
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: cache-touch
           key: vulkan-sdk-1.4.313.2-v1
 
       - name: cuda-toolkit
+        continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: cache-touch

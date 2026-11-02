@@ -30,7 +30,6 @@ on:
       - master
     paths: [
       '.github/workflows/build-combined-backends.yml',
-      '.github/workflows/ci-cache-keepalive.yml',
       'miaosoft/ci-images/**',
       '**/CMakeLists.txt',
       '**/.cmake',
