@@ -90,3 +90,25 @@ jobs:
         with:
           path: cache-touch
           key: cuda-toolkit-12.9.0-windows-v1
+
+      - name: PROBE linux-exact-key (cross-workflow visibility)
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: probe
+          key: ccache-combined-ubuntu-22.04-cuda-12.9-2026-11-02T09:36:33.410Z
+
+      - name: PROBE win-exact-key crossos
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: probe
+          key: ccache-combined-windows-2022-cuda-12.9-2026-11-02T09:44:24.669Z
+          enableCrossOsArchive: true
+
+      - name: PROBE self save+restore control
+        continue-on-error: true
+        uses: actions/cache@v5
+        with:
+          path: .github
+          key: keepalive-selftest-v1
