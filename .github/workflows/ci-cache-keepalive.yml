@@ -1,0 +1,80 @@
+name: CI cache keepalive
+
+# GitHub Actions caches are evicted after 7 days without access, but
+# build-combined-backends only runs every 2-4 weeks - so every run started
+# cold (measured 0% ccache hits across all legs, run 41406693204). This
+# workflow restores each cache weekly to reset the eviction timer.
+#
+# Restoring (downloading) a cache counts as access; that is the whole point.
+# ~5GB downloaded on a free runner, ~5min. Missing keys are not an error -
+# actions/cache/restore just logs "not found", so this is a no-op until the
+# build workflow has created the caches once.
+#
+# The ccache-* restores use restore-keys prefixes because ccache-action
+# appends a timestamp to every saved key.
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"   # Mondays 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  touch-caches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ccache combined-windows-2022-cuda-12.9
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-windows-2022-cuda-12.9-
+
+      - name: ccache combined-ubuntu-22.04-cuda-12.9
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-ubuntu-22.04-cuda-12.9-
+
+      - name: ccache combined-windows-2022-hip
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-windows-2022-hip-
+
+      - name: ccache combined-ubuntu-22.04-hip
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-ubuntu-22.04-hip-
+
+      - name: ccache combined-windows-2022-sycl
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-windows-2022-sycl-
+
+      - name: ccache combined-ubuntu-24.04-sycl
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-ubuntu-24.04-sycl-
+
+      - name: vulkan-sdk
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: vulkan-sdk-1.4.313.2-v1
+
+      - name: cuda-toolkit
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: cuda-toolkit-12.9.0-windows-v1

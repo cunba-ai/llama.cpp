@@ -11,6 +11,17 @@ name: Build combined backends
 # Note: no ccache-clear step. Unlike release.yml (which clears caches for clean
 # release runs), we KEEP ccache + toolchain caches across runs so iteration is
 # fast. GitHub LRU-evicts old caches under the 10GB repo limit automatically.
+#
+# Speedups (2026-11): this workflow runs every 2-4 weeks but GitHub evicts
+# caches after 7 days without access, so every run started cold (0% ccache
+# hits, run 41406693204). Mitigations:
+#   - ccache max-size raised from the ccache-action default 500MB to 2G
+#   - .github/workflows/ci-cache-keepalive.yml restores all caches weekly
+#   - Linux hip/sycl legs run in prebaked GHCR images (see ci-images job)
+#   - hip-vulkan-windows: mt.exe (Windows SDK) added to PATH - upstream
+#     d63fbfe79 embeds a manifest in every exe and lld-link shells out to
+#     mt.exe for it; this job runs without vcvarsall so it was not on PATH
+#   - cuda-vulkan-windows: CUDA toolkit dir cached (saves ~7min install)
 
 on:
   workflow_dispatch:
@@ -19,6 +30,8 @@ on:
       - master
     paths: [
       '.github/workflows/build-combined-backends.yml',
+      '.github/workflows/ci-cache-keepalive.yml',
+      'miaosoft/ci-images/**',
       '**/CMakeLists.txt',
       '**/.cmake',
       '**/*.h',
@@ -34,6 +47,7 @@ on:
 permissions:
   contents: read
   actions: write   # needed to save ccache + toolchain caches
+  packages: read   # pull prebaked CI images from GHCR
 
 env:
   GH_TOKEN: ${{ github.token }}
@@ -51,6 +65,48 @@ concurrency:
 
 jobs:
   # ============================================================
+  #  CI images (GHCR) - bake the Linux legs' runtime installs
+  #  (ROCm+Vulkan, oneAPI+Vulkan) into images so jobs start at
+  #  configure. Content-hash gated: rebuilds only when the
+  #  Dockerfile changes, otherwise the job is a ~1min no-op.
+  # ============================================================
+  ci-images:
+    # continue-on-error: a failure here must not cascade into skipping the
+    # hip/sycl legs (needs) and through them the publish jobs - the legs
+    # would then fail on the missing image and that is enough signal.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: hip-vulkan-ubuntu
+          - name: sycl-vulkan-ubuntu
+    steps:
+      - name: Clone
+        uses: actions/checkout@v6
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build & push (if Dockerfile changed)
+        run: |
+          set -e
+          IMG="ghcr.io/${{ github.repository_owner }}/llm-ci-${{ matrix.name }}"
+          TAG="$(sha256sum "miaosoft/ci-images/${{ matrix.name }}.Dockerfile" | cut -c1-16)"
+          if docker manifest inspect "$IMG:$TAG" >/dev/null 2>&1; then
+            echo "Image $IMG:$TAG already in registry - skipping build"
+            exit 0
+          fi
+          echo "Building $IMG:$TAG (Dockerfile changed or first run)"
+          docker build -t "$IMG:$TAG" -t "$IMG:latest" -f "miaosoft/ci-images/${{ matrix.name }}.Dockerfile" .
+          docker push "$IMG:$TAG"
+          docker push "$IMG:latest"
+
+  # ============================================================
   #  CUDA 12.9 + Vulkan
   # ============================================================
   cuda-vulkan-windows:
@@ -61,11 +117,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Cache CUDA Toolkit
+        id: cache-cuda
+        uses: actions/cache@v5
+        with:
+          path: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9
+          key: cuda-toolkit-12.9.0-windows-v1
+
       - name: Setup CUDA Toolkit 12.9
+        if: steps.cache-cuda.outputs.cache-hit != 'true'
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: '12.9.0'
           method: 'network'
+          use-github-cache: false   # cached explicitly above (stable key)
+
+      - name: Configure CUDA env (cached toolkit)
+        if: steps.cache-cuda.outputs.cache-hit == 'true'
+        run: |
+          $cuda = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9'
+          Add-Content $env:GITHUB_ENV "CUDA_PATH=$cuda"
+          Add-Content $env:GITHUB_PATH "$cuda\bin"
 
       - name: Cache Vulkan SDK
         id: cache-vulkan
@@ -99,6 +171,7 @@ jobs:
         uses: ggml-org/ccache-action@v1.2.21
         with:
           key: combined-windows-2022-cuda-12.9
+          max-size: 2G
 
       - name: Build
         shell: cmd
@@ -116,8 +189,7 @@ jobs:
             -DLLAMA_BUILD_NUMBER=%BUILD_NUMBER% ^
             -DLLAMA_BUILD_COMMIT=%COMMIT_ID_SHORT% ^
             ${{ env.CMAKE_ARGS }}
-          set /A NINJA_JOBS=%NUMBER_OF_PROCESSORS%-1
-          cmake --build build --config Release -j %NINJA_JOBS% --target llama-cli llama-server ggml-rpc-server
+          cmake --build build --config Release -j %NUMBER_OF_PROCESSORS% --target llama-cli llama-server ggml-rpc-server
 
       - name: Bundle CUDA runtime DLLs
         run: |
@@ -174,6 +246,7 @@ jobs:
         uses: ggml-org/ccache-action@v1.2.21
         with:
           key: combined-ubuntu-22.04-cuda-12.9
+          max-size: 2G
 
       - name: Compute version
         shell: bash
@@ -294,6 +367,7 @@ jobs:
         uses: ggml-org/ccache-action@v1.2.21
         with:
           key: combined-windows-2022-hip
+          max-size: 2G
 
       - name: Compute version
         shell: bash
@@ -306,6 +380,14 @@ jobs:
         run: |
           $env:HIP_PATH=$(Resolve-Path 'C:\Program Files\AMD\ROCm\*\bin\clang.exe' | split-path | split-path)
           $env:CMAKE_PREFIX_PATH="${env:HIP_PATH}"
+          # Upstream d63fbfe79 embeds a manifest into every Windows exe; lld-link
+          # implements that by shelling out to mt.exe. This job deliberately runs
+          # without vcvarsall (see comment below), so put the Windows SDK bin dir
+          # (mt.exe/rc.exe) on PATH ourselves.
+          $sdkBin = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\mt.exe' |
+                     Sort-Object FullName -Descending | Select-Object -First 1).DirectoryName
+          if (-not $sdkBin) { Write-Error "mt.exe not found under Windows Kits"; exit 1 }
+          $env:PATH = "$sdkBin;$env:PATH"
           # vulkan-shaders-gen is built by a CMake ExternalProject that re-detects its
           # own compiler (it does not inherit the -DCMAKE_C/CXX_COMPILER passed to the
           # parent, and CMAKE_CROSSCOMPILING is false on Windows-HIP). On the windows-2022
@@ -372,51 +454,26 @@ jobs:
 
   hip-vulkan-ubuntu:
     continue-on-error: true
+    needs: [ci-images]
     runs-on: ubuntu-22.04
+    container:
+      # Prebaked by the ci-images job: ROCm 7.2.1 + Vulkan SDK 1.4.313 +
+      # build tools (see miaosoft/ci-images/hip-vulkan-ubuntu.Dockerfile)
+      image: ghcr.io/cunba-ai/llm-ci-hip-vulkan-ubuntu:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     steps:
       - name: Clone
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Free up disk space
-        uses: ggml-org/free-disk-space@v1.3.1
-        with:
-          tool-cache: true
-
-      - name: Dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y build-essential libssl-dev ninja-build wget gnupg ca-certificates p7zip-full
-          # glslc is not in stock Ubuntu 22.04; pull it from the LunarG Vulkan SDK repo
-          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
-          sudo apt-get update -y
-          sudo apt-get install -y vulkan-sdk
-
-      - name: Setup ROCm 7.2.1
-        run: |
-          sudo mkdir --parents --mode=0755 /etc/apt/keyrings
-          wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | \
-            gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
-          sudo tee /etc/apt/sources.list.d/rocm.list << EOF
-          deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2.1 jammy main
-          EOF
-          sudo tee /etc/apt/preferences.d/rocm-pin-600 << EOF
-          Package: *
-          Pin: release o=repo.radeon.com
-          Pin-Priority: 600
-          EOF
-          sudo apt-get update
-          sudo apt-get install -y rocm-hip-sdk
-
-      - name: Add ROCm to PATH
-        run: echo "/opt/rocm/bin" >> $GITHUB_PATH
-
       - name: ccache
         uses: ggml-org/ccache-action@v1.2.21
         with:
           key: combined-ubuntu-22.04-hip
+          max-size: 2G
 
       - name: Compute version
         shell: bash
@@ -521,6 +578,7 @@ jobs:
         uses: ggml-org/ccache-action@v1.2.21
         with:
           key: combined-windows-2022-sycl
+          max-size: 2G
 
       - name: Compute version
         shell: bash
@@ -536,6 +594,8 @@ jobs:
           cmake -G "Ninja" -B build ^
             -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=icx ^
             -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache ^
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ^
             -DGGML_BACKEND_DL=ON -DBUILD_SHARED_LIBS=ON ^
             -DGGML_NATIVE=OFF ^
             -DGGML_SYCL=ON -DGGML_SYCL_F16=OFF ^
@@ -592,52 +652,28 @@ jobs:
 
   sycl-vulkan-ubuntu:
     continue-on-error: true
+    needs: [ci-images]
     runs-on: ubuntu-24.04
+    container:
+      # Prebaked by the ci-images job: oneAPI 2025.3.3.16 + Level Zero 1.28.2 +
+      # Vulkan headers/glslc + build tools (miaosoft/ci-images/sycl-vulkan-ubuntu.Dockerfile)
+      image: ghcr.io/cunba-ai/llm-ci-sycl-vulkan-ubuntu:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     env:
       ONEAPI_ROOT: /opt/intel/oneapi/
-      LEVEL_ZERO_VERSION: "1.28.2"
-      LEVEL_ZERO_UBUNTU_VERSION: "u24.04"
     steps:
       - name: Clone
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Free up disk space
-        uses: ggml-org/free-disk-space@v1.3.1
-        with:
-          tool-cache: true
-
-      - name: Dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y build-essential libssl-dev ninja-build libvulkan-dev glslc spirv-headers p7zip-full
-
-      - name: Cache oneAPI
-        id: cache-oneapi
-        uses: actions/cache@v5
-        with:
-          path: /opt/intel
-          key: oneapi-2025.3.3.16-v1
-
-      - name: Download & Install oneAPI
-        if: steps.cache-oneapi.outputs.cache-hit != 'true'
-        run: |
-          cd /tmp
-          wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/56f7923a-adb8-43f3-8b02-2b60fcac8cab/intel-deep-learning-essentials-2025.3.3.16_offline.sh -O intel-deep-learning-essentials_offline.sh
-          sudo bash intel-deep-learning-essentials_offline.sh -s -a --silent --eula accept
-
-      - name: Install Level Zero SDK
-        run: |
-          cd /tmp
-          wget -q "https://github.com/oneapi-src/level-zero/releases/download/v${LEVEL_ZERO_VERSION}/level-zero_${LEVEL_ZERO_VERSION}%2B${LEVEL_ZERO_UBUNTU_VERSION}_amd64.deb" -O level-zero.deb
-          wget -q "https://github.com/oneapi-src/level-zero/releases/download/v${LEVEL_ZERO_VERSION}/level-zero-devel_${LEVEL_ZERO_VERSION}%2B${LEVEL_ZERO_UBUNTU_VERSION}_amd64.deb" -O level-zero-devel.deb
-          sudo apt-get install -y ./level-zero.deb ./level-zero-devel.deb
-
       - name: ccache
         uses: ggml-org/ccache-action@v1.2.21
         with:
           key: combined-ubuntu-24.04-sycl
+          max-size: 2G
 
       - name: Compute version
         shell: bash
@@ -652,6 +688,8 @@ jobs:
           cmake -B build \
             -G "Ninja" \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_INSTALL_RPATH='$ORIGIN' \
             -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
             -DGGML_SYCL=ON \
