@@ -16,7 +16,13 @@ name: Build combined backends
 # caches after 7 days without access, so every run started cold (0% ccache
 # hits, run 41406693204). Mitigations:
 #   - ccache max-size raised from the ccache-action default 500MB to 2G
-#   - .github/workflows/ci-cache-keepalive.yml restores all caches weekly
+#   - weekly schedule (below) runs the cache-keepalive-* jobs only: they
+#     restore every cache to reset the 7-day eviction timer. NOTE: the touch
+#     must live in THIS workflow - probes on 2026-11-02 (run 41425955578)
+#     showed a separate workflow cannot restore these caches even by exact
+#     key on the same branch, so an external keepalive workflow is useless.
+#     Touch jobs run on the same runner type that created each cache
+#     (archives are OS-filtered at restore time).
 #   - Linux hip/sycl legs run in prebaked GHCR images (see ci-images job)
 #   - hip-vulkan-windows: mt.exe (Windows SDK) added to PATH - upstream
 #     d63fbfe79 embeds a manifest in every exe and lld-link shells out to
@@ -25,6 +31,13 @@ name: Build combined backends
 
 on:
   workflow_dispatch:
+    inputs:
+      touch-only:
+        description: 'Only run the cache-keepalive touch jobs (no builds)'
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 3 * * 1"   # Mondays 03:00 UTC - cache keepalive only
   push:
     branches:
       - master
@@ -64,12 +77,98 @@ concurrency:
 
 jobs:
   # ============================================================
+  #  Cache keepalive - schedule / touch-only dispatch only.
+  #  Restores every cache to reset the 7-day eviction timer.
+  #  Must live in THIS workflow: caches created here are not
+  #  restorable from other workflows even by exact key on the
+  #  same branch (probed 2026-11-02, run 41425955578). Touch
+  #  jobs use the same runner type that created each cache
+  #  (archives are OS-filtered at restore time). Every step is
+  #  continue-on-error so one flaky download cannot abort the
+  #  remaining refreshes.
+  # ============================================================
+  cache-keepalive-win:
+    if: github.event_name == 'schedule' || inputs.touch-only == true
+    runs-on: windows-2022
+    steps:
+      - name: ccache combined-windows-2022-cuda-12.9
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-windows-2022-cuda-12.9-
+
+      - name: ccache combined-windows-2022-hip
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-windows-2022-hip-
+
+      - name: ccache combined-windows-2022-sycl
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-windows-2022-sycl-
+
+      - name: vulkan-sdk
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: vulkan-sdk-1.4.313.2-v1
+
+      - name: cuda-toolkit
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: cuda-toolkit-12.9.0-windows-v1
+
+  cache-keepalive-u22:
+    if: github.event_name == 'schedule' || inputs.touch-only == true
+    runs-on: ubuntu-22.04
+    steps:
+      - name: ccache combined-ubuntu-22.04-cuda-12.9
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-ubuntu-22.04-cuda-12.9-
+
+      - name: ccache combined-ubuntu-22.04-hip
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-ubuntu-22.04-hip-
+
+  cache-keepalive-u24:
+    if: github.event_name == 'schedule' || inputs.touch-only == true
+    runs-on: ubuntu-24.04
+    steps:
+      - name: ccache combined-ubuntu-24.04-sycl
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: cache-touch
+          key: keepalive-${{ github.run_id }}
+          restore-keys: ccache-combined-ubuntu-24.04-sycl-
+
+  # ============================================================
   #  CI images (GHCR) - bake the Linux legs' runtime installs
   #  (ROCm+Vulkan, oneAPI+Vulkan) into images so jobs start at
   #  configure. Content-hash gated: rebuilds only when the
   #  Dockerfile changes, otherwise the job is a ~1min no-op.
   # ============================================================
   ci-images:
+    if: github.event_name != 'schedule' && inputs.touch-only != true
     # continue-on-error: a failure here must not cascade into skipping the
     # hip/sycl legs (needs) and through them the publish jobs - the legs
     # would then fail on the missing image and that is enough signal.
@@ -116,6 +215,7 @@ jobs:
   #  CUDA 12.9 + Vulkan
   # ============================================================
   cuda-vulkan-windows:
+    if: github.event_name != 'schedule' && inputs.touch-only != true
     runs-on: windows-2022
     steps:
       - name: Clone
@@ -229,6 +329,7 @@ jobs:
           name: llama-cuda-vulkan-windows-x64.zip
 
   cuda-vulkan-ubuntu:
+    if: github.event_name != 'schedule' && inputs.touch-only != true
     runs-on: ubuntu-22.04
     container:
       image: nvidia/cuda:12.9.1-devel-ubuntu22.04
@@ -306,6 +407,7 @@ jobs:
   #  ROCm/HIP + Vulkan  (non-blocking)
   # ============================================================
   hip-vulkan-windows:
+    if: github.event_name != 'schedule' && inputs.touch-only != true
     continue-on-error: true
     runs-on: windows-2022
     env:
@@ -459,6 +561,7 @@ jobs:
           name: llama-hip-vulkan-windows-x64.zip
 
   hip-vulkan-ubuntu:
+    if: github.event_name != 'schedule' && inputs.touch-only != true
     continue-on-error: true
     needs: [ci-images]
     runs-on: ubuntu-22.04
@@ -534,6 +637,7 @@ jobs:
   #  SYCL + Vulkan  (non-blocking)
   # ============================================================
   sycl-vulkan-windows:
+    if: github.event_name != 'schedule' && inputs.touch-only != true
     continue-on-error: true
     runs-on: windows-2022
     env:
@@ -657,6 +761,7 @@ jobs:
           name: llama-sycl-vulkan-windows-x64.zip
 
   sycl-vulkan-ubuntu:
+    if: github.event_name != 'schedule' && inputs.touch-only != true
     continue-on-error: true
     needs: [ci-images]
     runs-on: ubuntu-24.04
