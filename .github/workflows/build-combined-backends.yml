@@ -910,13 +910,21 @@ jobs:
           if [ ${#files[@]} -eq 0 ]; then
             echo "No archives to upload"; exit 0
           fi
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           for f in "${files[@]}"; do
             echo "== $f =="
             sha256=$(sha256sum "$f" | awk '{print $1}')
+            size=$(stat -c %s "$f")
             echo "sha256=$sha256"
+            # sidecar manifest for the istation downloader (same name + .manifest)
+            printf '{\n  "artifact_sha256": "%s",\n  "artifact_size_bytes": %s,\n  "built_at": "%s",\n  "version": "%s"\n}\n' \
+              "$sha256" "$size" "$built_at" "${BUILD_DATE}-${COMMIT_ID}" > "$f.manifest"
+            cat "$f.manifest"
             ./../ossutil64 cp "$f" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/$f" \
               -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f \
               --meta "x-oss-meta-sha256:$sha256"
+            ./../ossutil64 cp "$f.manifest" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/$f.manifest" \
+              -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f
           done
 
   # ============================================================
