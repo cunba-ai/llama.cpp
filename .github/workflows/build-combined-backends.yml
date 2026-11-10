@@ -354,7 +354,7 @@ jobs:
       - name: Dependencies
         run: |
           apt-get update -y
-          apt-get install -y build-essential libssl-dev ninja-build cmake pkg-config git wget gnupg ca-certificates p7zip-full
+          apt-get install -y build-essential libssl-dev ninja-build cmake pkg-config git wget gnupg ca-certificates p7zip-full zip
           # glslc is not in stock Ubuntu 22.04; pull it from the LunarG Vulkan SDK repo
           wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | apt-key add -
           wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
@@ -407,7 +407,9 @@ jobs:
           echo "$BUILD_DATE-$COMMIT_ID_SHORT" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
-          7z a -snl llama-cuda-vulkan-ubuntu-x64.zip ./build/bin/*
+          # zip -y stores symlinks as links; 7z -snl writes them as plain
+          # text files that no extractor restores
+          (cd build/bin && zip -r -y ../../llama-cuda-vulkan-ubuntu-x64.zip .)
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
@@ -919,7 +921,9 @@ jobs:
           echo "$BUILD_DATE-$COMMIT_ID_SHORT" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
-          7z a -snl llama-sycl-vulkan-ubuntu-x64.zip ./build/bin/*
+          # zip -y stores symlinks as links; 7z -snl writes them as plain
+          # text files that no extractor restores
+          (cd build/bin && zip -r -y ../../llama-sycl-vulkan-ubuntu-x64.zip .)
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
