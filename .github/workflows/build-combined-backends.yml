@@ -669,9 +669,13 @@ jobs:
       - name: Bundle ROCm runtime
         run: |
           ROCM_ROOT="$(rocm-sdk path --root)"
-          for lib in libamdhip64 libhipblas libhipblaslt librocblas librocsolver librocblas-util libTensile liborigami librocsparse; do
+          # the transitive closure ggml-hip needs at load time: hip runtime +
+          # blas stack + comgr/hsa/kpack/roctx/rocroller from the core wheel
+          for lib in libamdhip64 libhipblas libhipblaslt librocblas librocsolver librocblas-util libTensile liborigami librocsparse libamd_comgr libhsa-runtime64 librocm_kpack librocm_sysdeps_z librocprofiler-register librocroller libroctx64; do
             cp -P "$ROCM_ROOT"/lib/${lib}.so* build/bin/ 2>/dev/null || true
           done
+          # nested in the TheRock layout
+          cp -P "$ROCM_ROOT"/lib/rocm_sysdeps/lib/*.so* build/bin/ 2>/dev/null || true
           # Tensile kernels from the device wheels live under
           # {lib,bin}/<lib>/library/<gfx>/ depending on the dist layout
           mkdir -p build/bin/rocblas/library build/bin/hipblaslt/library
@@ -688,6 +692,9 @@ jobs:
               echo "missing rocblas kernels for $t"; exit 1
             fi
           done
+          # full dependency closure check against the bundled tree itself
+          missing=$(LD_LIBRARY_PATH="$PWD/build/bin" ldd build/bin/libggml-hip.so 2>/dev/null | grep "not found" || true)
+          if [ -n "$missing" ]; then echo "unresolved deps:"; echo "$missing"; exit 1; fi
 
       - name: Pack artifacts
         run: |
