@@ -670,8 +670,9 @@ jobs:
         run: |
           ROCM_ROOT="$(rocm-sdk path --root)"
           # the transitive closure ggml-hip needs at load time: hip runtime +
-          # blas stack + comgr/hsa/kpack/roctx/rocroller from the core wheel
-          for lib in libamdhip64 libhipblas libhipblaslt librocblas librocsolver librocblas-util libTensile liborigami librocsparse libamd_comgr libhsa-runtime64 librocm_kpack librocm_sysdeps_z librocprofiler-register librocroller libroctx64; do
+          # blas stack + comgr/hsa/kpack/roctx/rocroller from the core wheel,
+          # plus libclang-cpp/libLLVM that comgr links dynamically
+          for lib in libamdhip64 libhipblas libhipblaslt librocblas librocsolver librocblas-util libTensile liborigami librocsparse libamd_comgr libhsa-runtime64 librocm_kpack librocm_sysdeps_z librocprofiler-register librocroller libroctx64 libclang-cpp libLLVM; do
             cp -P "$ROCM_ROOT"/lib/${lib}.so* build/bin/ 2>/dev/null || true
           done
           # nested in the TheRock layout
