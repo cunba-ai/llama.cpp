@@ -694,7 +694,9 @@ jobs:
           echo "$BUILD_DATE-$COMMIT_ID_SHORT" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
-          7z a -snl llama-hip-vulkan-ubuntu-x64.zip ./build/bin/*
+          # zip -y stores symlinks as links; 7z -snl in this container writes
+          # them as 17-22 byte plain text files that no extractor restores
+          (cd build/bin && zip -r -y ../../llama-hip-vulkan-ubuntu-x64.zip .)
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6

@@ -20,7 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential libssl-dev ninja-build cmake ccache pkg-config git \
-        wget gnupg ca-certificates p7zip-full python3 python3-venv \
+        wget gnupg ca-certificates p7zip-full zip python3 python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # Vulkan SDK - LunarG apt repo pinned to 1.4.313
