@@ -32,11 +32,18 @@ RUN wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
     && apt-get install -y --no-install-recommends vulkan-sdk \
     && rm -rf /var/lib/apt/lists/*
 
-# ROCm 10.0 HIP SDK - TheRock wheels, same channel/version as the Windows leg
+# ROCm 10.0 HIP SDK - TheRock wheels, same channel/version as the Windows leg.
+# rocm[libraries,devel] ships no GPU kernels; each rocm-sdk-device-* wheel adds
+# the rocBLAS/hipBLASLt Tensile kernels for one gfx arch (must match
+# AMDGPU_TARGETS in build-combined-backends.yml).
 RUN python3 -m venv /opt/rocm-venv \
     && /opt/rocm-venv/bin/pip install --no-cache-dir \
         --index-url https://stable.repo.amd.com/rocm/whl-next/ \
         "rocm[libraries,devel]==10.0.0" \
+        rocm-sdk-device-gfx1100==10.0.0 rocm-sdk-device-gfx1101==10.0.0 \
+        rocm-sdk-device-gfx1102==10.0.0 rocm-sdk-device-gfx1150==10.0.0 \
+        rocm-sdk-device-gfx1151==10.0.0 rocm-sdk-device-gfx1200==10.0.0 \
+        rocm-sdk-device-gfx1201==10.0.0 \
     && /opt/rocm-venv/bin/rocm-sdk init \
     && ln -sfn "$(/opt/rocm-venv/bin/rocm-sdk path --root)" /opt/rocm
 

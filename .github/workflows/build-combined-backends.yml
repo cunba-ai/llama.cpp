@@ -437,13 +437,22 @@ jobs:
         uses: actions/cache@v5
         with:
           path: C:\TheRock\build
-          key: rocm-wheels-${{ env.ROCM_VERSION }}-multi-arch-${{ runner.os }}
+          key: rocm-wheels-${{ env.ROCM_VERSION }}-devices-${{ runner.os }}
 
       - name: Setup ROCm
         if: steps.cache-rocm.outputs.cache-hit != 'true'
-        uses: ./.github/actions/windows-setup-rocm
-        with:
-          version: ${{ env.ROCM_VERSION }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -Path "C:\TheRock\build" -ItemType Directory -Force | Out-Null
+          python -m venv C:\TheRock\build\.venv
+          & C:\TheRock\build\.venv\Scripts\Activate.ps1
+          python -m pip install --upgrade pip
+          # rocm[libraries,devel] ships no GPU kernels; each rocm-sdk-device-*
+          # wheel adds the rocBLAS/hipBLASLt Tensile kernels for one gfx arch
+          # (the windows-setup-rocm action cannot express these extras)
+          $pkgs = @("rocm[libraries,devel]==${{ env.ROCM_VERSION }}")
+          $pkgs += ('${{ env.AMDGPU_TARGETS }}' -split ';' | ForEach-Object { "rocm-sdk-device-$_==${{ env.ROCM_VERSION }}" })
+          python -m pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ @pkgs
 
       - name: Setup ROCm Environment
         run: |
@@ -549,13 +558,27 @@ jobs:
           $src=(rocm-sdk path --bin).Trim()
           if (-not $src) { throw "rocm-sdk path --bin returned empty" }
           $dst='.\build\bin'
-          New-Item -ItemType Directory -Force -Path "$dst\rocblas\library","$dst\hipblaslt\library" | Out-Null
-          # rocm_kpack.dll: amdhip64_7's direct dependency in the TheRock build
-          foreach ($p in @('amdhip64_*.dll','rocm_kpack*.dll','amd_comgr*.dll','hiprtc*.dll','libhipblas.dll','libhipblaslt.dll','rocblas.dll','rocsolver.dll')) {
+          # TheRock names the HIP BLAS dll hipblas.dll (ggml-hip.dll imports it
+          # directly); libhipblas.dll only existed in the old HIP SDK layout.
+          # origami.dll: new dep of libhipblaslt (rocblas -> hipblaslt -> origami)
+          foreach ($p in @('amdhip64_*.dll','rocm_kpack*.dll','amd_comgr*.dll','hiprtc*.dll','hipblas.dll','libhipblas.dll','libhipblaslt.dll','origami.dll','rocblas.dll','rocsolver.dll')) {
             Copy-Item "$src\$p" $dst -Force -ErrorAction SilentlyContinue
           }
-          Copy-Item "$src\rocblas\library\*" "$dst\rocblas\library\" -Force -ErrorAction SilentlyContinue
-          Copy-Item "$src\hipblaslt\library\*" "$dst\hipblaslt\library\" -Force -ErrorAction SilentlyContinue
+          # Tensile kernels from the device wheels live under
+          # bin\{rocblas,hipblaslt}\library\<gfx>\; robocopy /E recurses
+          robocopy "$src\rocblas\library" "$dst\rocblas\library" /E /NFL /NDL /NJH /NJS
+          if ($LASTEXITCODE -ge 8) { throw "robocopy rocblas failed: $LASTEXITCODE" } else { $global:LASTEXITCODE = 0 }
+          robocopy "$src\hipblaslt\library" "$dst\hipblaslt\library" /E /NFL /NDL /NJH /NJS
+          if ($LASTEXITCODE -ge 8) { throw "robocopy hipblaslt failed: $LASTEXITCODE" } else { $global:LASTEXITCODE = 0 }
+          # fail loudly instead of shipping an archive that cannot run
+          foreach ($dll in @('amdhip64_7.dll','rocm_kpack.dll','hipblas.dll','rocblas.dll','libhipblaslt.dll','origami.dll')) {
+            if (-not (Test-Path "$dst\$dll")) { Write-Error "missing $dll"; exit 1 }
+          }
+          foreach ($t in ('${{ env.AMDGPU_TARGETS }}' -split ';')) {
+            if (-not (Get-ChildItem "$dst\rocblas\library\$t" -ErrorAction SilentlyContinue)) {
+              Write-Error "missing rocblas kernels for $t"; exit 1
+            }
+          }
 
       - name: Bundle MSVC runtime DLLs
         # Ship the VC++ runtime next to the exes (exe dir is searched before
@@ -645,11 +668,22 @@ jobs:
       - name: Bundle ROCm runtime
         run: |
           ROCM_ROOT="$(rocm-sdk path --root)"
-          for lib in libamdhip64 libhipblas libhipblaslt librocblas librocsolver librocblas-util libTensile; do
+          for lib in libamdhip64 libhipblas libhipblaslt librocblas librocsolver librocblas-util libTensile liborigami librocsparse; do
             cp -P "$ROCM_ROOT"/lib/${lib}.so* build/bin/ 2>/dev/null || true
           done
-          mkdir -p build/bin/rocblas/library
-          cp -P "$ROCM_ROOT"/lib/rocblas/library/* build/bin/rocblas/library/ 2>/dev/null || true
+          # Tensile kernels from the device wheels live under
+          # {lib,bin}/<lib>/library/<gfx>/ depending on the dist layout
+          mkdir -p build/bin/rocblas/library build/bin/hipblaslt/library
+          for tree in rocblas hipblaslt; do
+            for d in "$ROCM_ROOT/lib/$tree/library" "$ROCM_ROOT/bin/$tree/library"; do
+              [ -d "$d" ] && cp -Pr "$d"/. "build/bin/$tree/library/" && break
+            done
+          done
+          # fail loudly instead of shipping an archive without kernels
+          for t in $(echo "${{ env.AMDGPU_TARGETS }}" | tr ';' ' '); do
+            ls "build/bin/rocblas/library/$t"/*.hsaco >/dev/null 2>&1 \
+              || { echo "missing rocblas kernels for $t"; exit 1; }
+          done
 
       - name: Pack artifacts
         run: |
