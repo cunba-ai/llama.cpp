@@ -423,44 +423,47 @@ jobs:
     continue-on-error: true
     runs-on: windows-2022
     env:
-      HIPSDK_INSTALLER_VERSION: "26.Q1"
+      ROCM_VERSION: "10.0.0"
     steps:
       - name: Clone
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Grab rocWMMA package
-        run: |
-          curl -o rocwmma.deb "https://repo.radeon.com/rocm/apt/7.2.1/pool/main/r/rocwmma-dev/rocwmma-dev_2.2.0.70201-81~24.04_amd64.deb"
-          7z x rocwmma.deb
-          7z x data.tar
-
+      # ROCm 10 retired the old HIP SDK exe installer; Windows now uses the
+      # TheRock wheels (same route as upstream's release.yml windows-rocm job).
       - name: Cache ROCm Installation
         id: cache-rocm
         uses: actions/cache@v5
         with:
-          path: C:\Program Files\AMD\ROCm
-          key: cache-gha-rocm-${{ env.HIPSDK_INSTALLER_VERSION }}-${{ runner.os }}
+          path: C:\TheRock\build
+          key: rocm-wheels-${{ env.ROCM_VERSION }}-multi-arch-${{ runner.os }}
 
-      - name: Install ROCm
+      - name: Setup ROCm
         if: steps.cache-rocm.outputs.cache-hit != 'true'
+        uses: ./.github/actions/windows-setup-rocm
+        with:
+          version: ${{ env.ROCM_VERSION }}
+
+      - name: Setup ROCm Environment
         run: |
           $ErrorActionPreference = "Stop"
-          write-host "Downloading AMD HIP SDK Installer"
-          Invoke-WebRequest -Uri "https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-${{ env.HIPSDK_INSTALLER_VERSION }}-Win11-For-HIP.exe" -OutFile "${env:RUNNER_TEMP}\rocm-install.exe"
-          write-host "Installing AMD HIP SDK"
-          $proc = Start-Process "${env:RUNNER_TEMP}\rocm-install.exe" -ArgumentList '-install' -NoNewWindow -PassThru
-          $completed = $proc.WaitForExit(600000)
-          if (-not $completed) {
-              Write-Error "ROCm installation timed out after 10 minutes. Killing the process"
-              $proc.Kill()
-              exit 1
-          }
-          if ($proc.ExitCode -ne 0) {
-              Write-Error "ROCm installation failed with exit code $($proc.ExitCode)"
-              exit 1
-          }
+          & C:\TheRock\build\.venv\Scripts\Activate.ps1
+          rocm-sdk init # idempotent; no-op if already expanded
+          if ($LASTEXITCODE -ne 0) { throw "rocm-sdk init failed with exit code $LASTEXITCODE" }
+          $rocmPath = (rocm-sdk path --root).Trim()
+          $cmakePath = (rocm-sdk path --cmake).Trim()
+          $binPath = (rocm-sdk path --bin).Trim()
+          if (-not $rocmPath) { throw "rocm-sdk path --root returned empty - devel package may not be installed" }
+          write-host "ROCm root: $rocmPath"
+          echo "HIP_PATH=$rocmPath" >> $env:GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=$cmakePath" >> $env:GITHUB_ENV
+          echo "HIP_DEVICE_LIB_PATH=$rocmPath\lib\llvm\amdgcn\bitcode" >> $env:GITHUB_ENV
+          echo "HIP_PLATFORM=amd" >> $env:GITHUB_ENV
+          echo "LLVM_PATH=$rocmPath\lib\llvm" >> $env:GITHUB_ENV
+          echo "$binPath" >> $env:GITHUB_PATH
+          # keep the venv on PATH so later steps can call rocm-sdk
+          echo "C:\TheRock\build\.venv\Scripts" >> $env:GITHUB_PATH
 
       - name: Cache Vulkan SDK
         id: cache-vulkan
@@ -489,6 +492,13 @@ jobs:
           key: combined-windows-2022-hip
           max-size: 2G
 
+      - name: Tune ccache for ROCm
+        run: |
+          # required from ROCm 10.1 (clang -E output has no GPU code, so the
+          # preprocessor fallback can reuse objects with old GPU code); safe on
+          # 10.0 too - matches upstream's windows-rocm job
+          ccache --set-config=depend_mode=true
+
       - name: Compute version
         shell: bash
         run: |
@@ -498,8 +508,6 @@ jobs:
 
       - name: Build
         run: |
-          $env:HIP_PATH=$(Resolve-Path 'C:\Program Files\AMD\ROCm\*\bin\clang.exe' | split-path | split-path)
-          $env:CMAKE_PREFIX_PATH="${env:HIP_PATH}"
           # Upstream d63fbfe79 embeds a manifest into every Windows exe; lld-link
           # implements that by shelling out to mt.exe. This job deliberately runs
           # without vcvarsall (see comment below), so put the Windows SDK bin dir
@@ -515,19 +523,19 @@ jobs:
           # .exe can end up tied to a runtime DLL not on PATH, so gmake fails to launch it
           # with a silent "Error 127" when generating shaders. Pin the host tool onto the
           # ROCm clang and put its runtime DLLs on PATH so the .exe actually loads.
-          $env:CC  = "${env:HIP_PATH}\bin\clang.exe"
-          $env:CXX = "${env:HIP_PATH}\bin\clang++.exe"
-          $env:PATH = "${env:HIP_PATH}\bin;" + $env:PATH
+          $env:CC  = "${env:HIP_PATH}\lib\llvm\bin\clang.exe"
+          $env:CXX = "${env:HIP_PATH}\lib\llvm\bin\clang++.exe"
+          $env:PATH = "${env:HIP_PATH}\lib\llvm\bin;" + $env:PATH
           cmake -G "Unix Makefiles" -B build -S . `
-            -DCMAKE_C_COMPILER="${env:HIP_PATH}\bin\clang.exe" `
-            -DCMAKE_CXX_COMPILER="${env:HIP_PATH}\bin\clang++.exe" `
-            -DCMAKE_CXX_FLAGS="-I$($PWD.Path.Replace('\', '/'))/opt/rocm-7.2.1/include/ -Wno-ignored-attributes -Wno-nested-anon-types" `
+            -DCMAKE_C_COMPILER="${env:HIP_PATH}\lib\llvm\bin\clang.exe" `
+            -DCMAKE_CXX_COMPILER="${env:HIP_PATH}\lib\llvm\bin\clang++.exe" `
+            -DCMAKE_HIP_COMPILER="${env:HIP_PATH}\lib\llvm\bin\clang.exe" `
+            -DCMAKE_CXX_FLAGS="-Wno-ignored-attributes -Wno-nested-anon-types" `
             -DCMAKE_BUILD_TYPE=Release `
             -DGGML_BACKEND_DL=ON `
             -DBUILD_SHARED_LIBS=ON `
             -DGGML_NATIVE=OFF `
             -DGPU_TARGETS="${{ env.AMDGPU_TARGETS }}" `
-            -DGGML_HIP_ROCWMMA_FATTN=ON `
             -DGGML_HIP=ON `
             -DCMAKE_HIP_COMPILER_LAUNCHER=ccache `
             -DGGML_VULKAN=ON `
@@ -538,11 +546,12 @@ jobs:
 
       - name: Bundle ROCm runtime DLLs
         run: |
-          $env:HIP_PATH=$(Resolve-Path 'C:\Program Files\AMD\ROCm\*\bin\clang.exe' | split-path | split-path)
+          $src=(rocm-sdk path --bin).Trim()
+          if (-not $src) { throw "rocm-sdk path --bin returned empty" }
           $dst='.\build\bin'
           New-Item -ItemType Directory -Force -Path "$dst\rocblas\library","$dst\hipblaslt\library" | Out-Null
-          $src="${env:HIP_PATH}\bin"
-          foreach ($p in @('amdhip64_*.dll','amd_comgr*.dll','hiprtc*.dll','libhipblas.dll','libhipblaslt.dll','rocblas.dll','rocsolver.dll')) {
+          # rocm_kpack.dll: amdhip64_7's direct dependency in the TheRock build
+          foreach ($p in @('amdhip64_*.dll','rocm_kpack*.dll','amd_comgr*.dll','hiprtc*.dll','libhipblas.dll','libhipblaslt.dll','rocblas.dll','rocsolver.dll')) {
             Copy-Item "$src\$p" $dst -Force -ErrorAction SilentlyContinue
           }
           Copy-Item "$src\rocblas\library\*" "$dst\rocblas\library\" -Force -ErrorAction SilentlyContinue
@@ -578,8 +587,8 @@ jobs:
     needs: [ci-images]
     runs-on: ubuntu-22.04
     container:
-      # Prebaked by the ci-images job: ROCm 7.2.1 + Vulkan SDK 1.4.313 +
-      # build tools (see miaosoft/ci-images/hip-vulkan-ubuntu.Dockerfile)
+      # Prebaked by the ci-images job: ROCm 10.0 (TheRock wheels) + Vulkan SDK
+      # 1.4.313 + build tools (see miaosoft/ci-images/hip-vulkan-ubuntu.Dockerfile)
       image: ghcr.io/cunba-ai/llm-ci-hip-vulkan-ubuntu:latest
       credentials:
         username: ${{ github.actor }}
@@ -596,6 +605,13 @@ jobs:
           key: combined-ubuntu-22.04-hip
           max-size: 2G
 
+      - name: Tune ccache for ROCm
+        run: |
+          # required from ROCm 10.1 (clang -E output has no GPU code, so the
+          # preprocessor fallback can reuse objects with old GPU code); safe on
+          # 10.0 too - matches upstream's windows-rocm job
+          ccache --set-config=depend_mode=true
+
       - name: Compute version
         shell: bash
         run: |
@@ -605,8 +621,11 @@ jobs:
 
       - name: Build
         run: |
+          ROCM_ROOT="$(rocm-sdk path --root)"
           cmake -B build -S . \
-            -DCMAKE_HIP_COMPILER="$(hipconfig -l)/clang" \
+            -DCMAKE_HIP_COMPILER="$ROCM_ROOT/lib/llvm/bin/clang" \
+            -DCMAKE_PREFIX_PATH="$ROCM_ROOT" \
+            -DHIP_PATH="$ROCM_ROOT" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_RPATH='$ORIGIN' \
             -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
@@ -615,7 +634,6 @@ jobs:
             -DGGML_NATIVE=OFF \
             -DGPU_TARGETS="${{ env.AMDGPU_TARGETS }}" \
             -DHIP_PLATFORM=amd \
-            -DGGML_HIP_ROCWMMA_FATTN=ON \
             -DGGML_HIP=ON \
             -DCMAKE_HIP_COMPILER_LAUNCHER=ccache \
             -DGGML_VULKAN=ON \
@@ -626,11 +644,12 @@ jobs:
 
       - name: Bundle ROCm runtime
         run: |
+          ROCM_ROOT="$(rocm-sdk path --root)"
           for lib in libamdhip64 libhipblas libhipblaslt librocblas librocsolver librocblas-util libTensile; do
-            cp -P /opt/rocm/lib/${lib}.so* build/bin/ 2>/dev/null || true
+            cp -P "$ROCM_ROOT"/lib/${lib}.so* build/bin/ 2>/dev/null || true
           done
           mkdir -p build/bin/rocblas/library
-          cp -P /opt/rocm/lib/rocblas/library/* build/bin/rocblas/library/ 2>/dev/null || true
+          cp -P "$ROCM_ROOT"/lib/rocblas/library/* build/bin/rocblas/library/ 2>/dev/null || true
 
       - name: Pack artifacts
         run: |
