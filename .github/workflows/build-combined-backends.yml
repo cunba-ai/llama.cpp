@@ -574,10 +574,11 @@ jobs:
           foreach ($dll in @('amdhip64_7.dll','rocm_kpack.dll','hipblas.dll','rocblas.dll','libhipblaslt.dll','origami.dll')) {
             if (-not (Test-Path "$dst\$dll")) { Write-Error "missing $dll"; exit 1 }
           }
+          # device wheels package kernels two ways: flat *_<gfx>.* files for
+          # some archs, library\<gfx>\ subdirs for others - accept either
           foreach ($t in ('${{ env.AMDGPU_TARGETS }}' -split ';')) {
-            if (-not (Get-ChildItem "$dst\rocblas\library\$t" -ErrorAction SilentlyContinue)) {
-              Write-Error "missing rocblas kernels for $t"; exit 1
-            }
+            $has = (Test-Path "$dst\rocblas\library\$t") -or [bool](Get-ChildItem "$dst\rocblas\library" -Filter "*_$t.*" -ErrorAction SilentlyContinue)
+            if (-not $has) { Write-Error "missing rocblas kernels for $t"; exit 1 }
           }
 
       - name: Bundle MSVC runtime DLLs
@@ -679,10 +680,13 @@ jobs:
               [ -d "$d" ] && cp -Pr "$d"/. "build/bin/$tree/library/" && break
             done
           done
-          # fail loudly instead of shipping an archive without kernels
+          # fail loudly instead of shipping an archive without kernels;
+          # wheels package kernels flat (*_<gfx>.*) or in <gfx>/ subdirs
           for t in $(echo "${{ env.AMDGPU_TARGETS }}" | tr ';' ' '); do
-            ls "build/bin/rocblas/library/$t"/*.hsaco >/dev/null 2>&1 \
-              || { echo "missing rocblas kernels for $t"; exit 1; }
+            if [ ! -d "build/bin/rocblas/library/$t" ] \
+               && ! ls build/bin/rocblas/library/*_"$t".* >/dev/null 2>&1; then
+              echo "missing rocblas kernels for $t"; exit 1
+            fi
           done
 
       - name: Pack artifacts
