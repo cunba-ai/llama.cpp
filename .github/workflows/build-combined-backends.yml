@@ -914,6 +914,15 @@ jobs:
           cp -P /opt/intel/oneapi/mkl/latest/lib/intel64/libmkl_intel_ilp64.so* build/bin/ 2>/dev/null || true
           cp -P /opt/intel/oneapi/mkl/latest/lib/intel64/libmkl_core.so* build/bin/ 2>/dev/null || true
           cp -P /opt/intel/oneapi/mkl/latest/lib/intel64/libmkl_sequential.so* build/bin/ 2>/dev/null || true
+          # dnnl/tbb/mkl_tbb_thread/iomp5/OpenCL: linked by mkl_sycl and the
+          # ur_loader fallback chain (the Windows leg ships their .dll twins)
+          cp -P /opt/intel/oneapi/mkl/latest/lib/intel64/libmkl_tbb_thread.so* build/bin/ 2>/dev/null || true
+          cp -P /opt/intel/oneapi/dnnl/latest/lib/libdnnl.so* build/bin/ 2>/dev/null || true
+          cp -P /opt/intel/oneapi/tbb/latest/lib/libtbb.so* build/bin/ 2>/dev/null || true
+          cp -P /opt/intel/oneapi/compiler/latest/lib/libiomp5.so* build/bin/ 2>/dev/null || true
+          for p in /opt/intel/oneapi/compiler/latest/lib /opt/intel/oneapi/lib; do
+            cp -P $p/libOpenCL.so* build/bin/ 2>/dev/null || true
+          done
           cp -P /usr/lib/x86_64-linux-gnu/libze_loader.so* build/bin/ 2>/dev/null || true
 
       - name: Pack artifacts
