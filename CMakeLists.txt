@@ -3,17 +3,29 @@ project("llama.cpp" C CXX)
 include(CheckIncludeFileCXX)
 
 ### llama.cpp version
-set(LLAMA_VERSION_MAJOR 0)
-set(LLAMA_VERSION_MINOR 8)
+# iStation 发版基线 (version-date-suffix): 大版本 x.y.z 改这里走 MR; CI 经
+# -DLLAMA_VERSION_DATE=<yyyymmdd> 注入发布日期, 完整版本 = x.y.z+yyyymmdd
+# (+build 形态, 与客户端/网关/sound/build 仓统一)。
+set(LLAMA_VERSION_MAJOR 1)
+set(LLAMA_VERSION_MINOR 4)
 set(LLAMA_VERSION_PATCH 0)
 set(LLAMA_VERSION_BASE "${LLAMA_VERSION_MAJOR}.${LLAMA_VERSION_MINOR}.${LLAMA_VERSION_PATCH}")
+
+# 发布日期后缀 (yyyymmdd): CI 从 release/sandbox 分支名提取注入; 空 = 本地构建。
+set(LLAMA_VERSION_DATE "" CACHE STRING "iStation release date suffix (yyyymmdd), appended as +build metadata")
+if (LLAMA_VERSION_DATE AND NOT LLAMA_VERSION_DATE MATCHES "^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$")
+    message(FATAL_ERROR "LLAMA_VERSION_DATE 非法: '${LLAMA_VERSION_DATE}' (要求空串或 8 位日期 yyyymmdd)")
+endif()
 
 # whether this is a development/nightly build
 # set this to OFF when making a release from a release tag (vX.Y.Z)
 # ref: https://github.com/ggml-org/ggml/discussions/1579
 option(LLAMA_BUILD_IS_DEV "llama: dev build" ON)
 
-if (LLAMA_BUILD_IS_DEV)
+if (LLAMA_VERSION_DATE)
+    # 发版形态: x.y.z+yyyymmdd (不带 -dev)
+    set(LLAMA_VERSION "${LLAMA_VERSION_BASE}+${LLAMA_VERSION_DATE}")
+elseif (LLAMA_BUILD_IS_DEV)
     set(LLAMA_VERSION "${LLAMA_VERSION_BASE}-dev")
 else()
     # TODO: check that the current commit is tagged correctly according to the version specified above

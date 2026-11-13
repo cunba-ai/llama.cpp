@@ -41,6 +41,10 @@ on:
   push:
     branches:
       - master
+      # version-date-suffix: 发布分支自动构建 (日期取分支名); workflow_dispatch
+      # 亦可在任意 release/sandbox 分支手动触发。
+      - release/release-*
+      - sandbox/sandbox-*
     paths: [
       '.github/workflows/build-combined-backends.yml',
       'miaosoft/ci-images/**',
@@ -282,8 +286,17 @@ jobs:
         shell: bash
         run: |
           echo "BUILD_NUMBER=$(date -u +%y%m%d)"        >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(date -u +%Y%m%d)"          >> "$GITHUB_ENV"
           echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"      >> "$GITHUB_ENV"
+          # version-date-suffix: release/sandbox 分支取分支日期, 其余 (master/dispatch)
+          # 取构建日; 完整版本 = CMake 基线 + 日期 (+build), 与 CMake LLAMA_VERSION 同口径。
+          if [[ "${GITHUB_REF_NAME}" =~ ^(release/release|sandbox/sandbox)-([0-9]{8})$ ]]; then
+            VERSION_DATE="${BASH_REMATCH[2]}"
+          else
+            VERSION_DATE="$(date -u +%Y%m%d)"
+          fi
+          echo "VERSION_DATE=${VERSION_DATE}" >> "$GITHUB_ENV"
+          VBASE="$(awk '/^set\(LLAMA_VERSION_(MAJOR|MINOR|PATCH) /{gsub(/\)/,"",$2); v[$1]=$2} END{b=v["set(LLAMA_VERSION_MAJOR"]"."v["set(LLAMA_VERSION_MINOR"]"."v["set(LLAMA_VERSION_PATCH"]; if (b !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1; print b}' CMakeLists.txt)" || exit 1
+          echo "LLAMA_VERSION_FULL=${VBASE}+${VERSION_DATE}" >> "$GITHUB_ENV"
 
       - name: ccache
         uses: ggml-org/ccache-action@v1.2.21
@@ -306,6 +319,7 @@ jobs:
             -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache ^
             -DLLAMA_BUILD_NUMBER=%BUILD_NUMBER% ^
             -DLLAMA_BUILD_COMMIT=%COMMIT_ID_SHORT% ^
+            -DLLAMA_VERSION_DATE=%VERSION_DATE% ^
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j %NUMBER_OF_PROCESSORS% --target llama-cli llama-server ggml-rpc-server
 
@@ -329,7 +343,7 @@ jobs:
       - name: Pack artifacts
         shell: bash
         run: |
-          printf '%s-%s' "$BUILD_DATE" "$COMMIT_ID_SHORT" > ./build/bin/Release/VERSION
+          printf '%s' "$LLAMA_VERSION_FULL" > ./build/bin/Release/VERSION
           cp miaosoft/scripts/install/install.bat ./build/bin/Release/install.bat
           cp LICENSE ./build/bin/Release/
           7z a -snl llama-cuda-vulkan-windows-x64.zip ./build/bin/Release/*
@@ -371,8 +385,17 @@ jobs:
         shell: bash
         run: |
           echo "BUILD_NUMBER=$(date -u +%y%m%d)"     >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(date -u +%Y%m%d)"       >> "$GITHUB_ENV"
           echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"   >> "$GITHUB_ENV"
+          # version-date-suffix: release/sandbox 分支取分支日期, 其余 (master/dispatch)
+          # 取构建日; 完整版本 = CMake 基线 + 日期 (+build), 与 CMake LLAMA_VERSION 同口径。
+          if [[ "${GITHUB_REF_NAME}" =~ ^(release/release|sandbox/sandbox)-([0-9]{8})$ ]]; then
+            VERSION_DATE="${BASH_REMATCH[2]}"
+          else
+            VERSION_DATE="$(date -u +%Y%m%d)"
+          fi
+          echo "VERSION_DATE=${VERSION_DATE}" >> "$GITHUB_ENV"
+          VBASE="$(awk '/^set\(LLAMA_VERSION_(MAJOR|MINOR|PATCH) /{gsub(/\)/,"",$2); v[$1]=$2} END{b=v["set(LLAMA_VERSION_MAJOR"]"."v["set(LLAMA_VERSION_MINOR"]"."v["set(LLAMA_VERSION_PATCH"]; if (b !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1; print b}' CMakeLists.txt)" || exit 1
+          echo "LLAMA_VERSION_FULL=${VBASE}+${VERSION_DATE}" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
@@ -391,6 +414,7 @@ jobs:
             -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
             -DLLAMA_BUILD_NUMBER="$BUILD_NUMBER" \
             -DLLAMA_BUILD_COMMIT="$COMMIT_ID_SHORT" \
+            -DLLAMA_VERSION_DATE="$VERSION_DATE" \
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
 
@@ -404,7 +428,7 @@ jobs:
 
       - name: Pack artifacts
         run: |
-          echo "$BUILD_DATE-$COMMIT_ID_SHORT" > build/bin/VERSION
+          echo "$LLAMA_VERSION_FULL" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
           # zip -y stores symlinks as links; 7z -snl writes them as plain
@@ -514,8 +538,17 @@ jobs:
         shell: bash
         run: |
           echo "BUILD_NUMBER=$(date -u +%y%m%d)"        >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(date -u +%Y%m%d)"          >> "$GITHUB_ENV"
           echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"      >> "$GITHUB_ENV"
+          # version-date-suffix: release/sandbox 分支取分支日期, 其余 (master/dispatch)
+          # 取构建日; 完整版本 = CMake 基线 + 日期 (+build), 与 CMake LLAMA_VERSION 同口径。
+          if [[ "${GITHUB_REF_NAME}" =~ ^(release/release|sandbox/sandbox)-([0-9]{8})$ ]]; then
+            VERSION_DATE="${BASH_REMATCH[2]}"
+          else
+            VERSION_DATE="$(date -u +%Y%m%d)"
+          fi
+          echo "VERSION_DATE=${VERSION_DATE}" >> "$GITHUB_ENV"
+          VBASE="$(awk '/^set\(LLAMA_VERSION_(MAJOR|MINOR|PATCH) /{gsub(/\)/,"",$2); v[$1]=$2} END{b=v["set(LLAMA_VERSION_MAJOR"]"."v["set(LLAMA_VERSION_MINOR"]"."v["set(LLAMA_VERSION_PATCH"]; if (b !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1; print b}' CMakeLists.txt)" || exit 1
+          echo "LLAMA_VERSION_FULL=${VBASE}+${VERSION_DATE}" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
@@ -552,6 +585,7 @@ jobs:
             -DGGML_VULKAN=ON `
             -DLLAMA_BUILD_NUMBER="$env:BUILD_NUMBER" `
             -DLLAMA_BUILD_COMMIT="$env:COMMIT_ID_SHORT" `
+            -DLLAMA_VERSION_DATE="$env:VERSION_DATE" `
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j ${env:NUMBER_OF_PROCESSORS} --target llama-cli llama-server ggml-rpc-server
 
@@ -596,7 +630,7 @@ jobs:
       - name: Pack artifacts
         shell: bash
         run: |
-          printf '%s-%s' "$BUILD_DATE" "$COMMIT_ID_SHORT" > ./build/bin/VERSION
+          printf '%s' "$LLAMA_VERSION_FULL" > ./build/bin/VERSION
           cp miaosoft/scripts/install/install.bat ./build/bin/install.bat
           cp LICENSE ./build/bin/
           7z a -snl llama-hip-vulkan-windows-x64.zip ./build/bin/*
@@ -642,8 +676,17 @@ jobs:
         shell: bash
         run: |
           echo "BUILD_NUMBER=$(date -u +%y%m%d)"     >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(date -u +%Y%m%d)"       >> "$GITHUB_ENV"
           echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"   >> "$GITHUB_ENV"
+          # version-date-suffix: release/sandbox 分支取分支日期, 其余 (master/dispatch)
+          # 取构建日; 完整版本 = CMake 基线 + 日期 (+build), 与 CMake LLAMA_VERSION 同口径。
+          if [[ "${GITHUB_REF_NAME}" =~ ^(release/release|sandbox/sandbox)-([0-9]{8})$ ]]; then
+            VERSION_DATE="${BASH_REMATCH[2]}"
+          else
+            VERSION_DATE="$(date -u +%Y%m%d)"
+          fi
+          echo "VERSION_DATE=${VERSION_DATE}" >> "$GITHUB_ENV"
+          VBASE="$(awk '/^set\(LLAMA_VERSION_(MAJOR|MINOR|PATCH) /{gsub(/\)/,"",$2); v[$1]=$2} END{b=v["set(LLAMA_VERSION_MAJOR"]"."v["set(LLAMA_VERSION_MINOR"]"."v["set(LLAMA_VERSION_PATCH"]; if (b !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1; print b}' CMakeLists.txt)" || exit 1
+          echo "LLAMA_VERSION_FULL=${VBASE}+${VERSION_DATE}" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
@@ -665,6 +708,7 @@ jobs:
             -DGGML_VULKAN=ON \
             -DLLAMA_BUILD_NUMBER="$BUILD_NUMBER" \
             -DLLAMA_BUILD_COMMIT="$COMMIT_ID_SHORT" \
+            -DLLAMA_VERSION_DATE="$VERSION_DATE" \
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
 
@@ -703,7 +747,7 @@ jobs:
 
       - name: Pack artifacts
         run: |
-          echo "$BUILD_DATE-$COMMIT_ID_SHORT" > build/bin/VERSION
+          echo "$LLAMA_VERSION_FULL" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
           # zip -y stores symlinks as links; 7z -snl in this container writes
@@ -777,8 +821,17 @@ jobs:
         shell: bash
         run: |
           echo "BUILD_NUMBER=$(date -u +%y%m%d)"        >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(date -u +%Y%m%d)"          >> "$GITHUB_ENV"
           echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"      >> "$GITHUB_ENV"
+          # version-date-suffix: release/sandbox 分支取分支日期, 其余 (master/dispatch)
+          # 取构建日; 完整版本 = CMake 基线 + 日期 (+build), 与 CMake LLAMA_VERSION 同口径。
+          if [[ "${GITHUB_REF_NAME}" =~ ^(release/release|sandbox/sandbox)-([0-9]{8})$ ]]; then
+            VERSION_DATE="${BASH_REMATCH[2]}"
+          else
+            VERSION_DATE="$(date -u +%Y%m%d)"
+          fi
+          echo "VERSION_DATE=${VERSION_DATE}" >> "$GITHUB_ENV"
+          VBASE="$(awk '/^set\(LLAMA_VERSION_(MAJOR|MINOR|PATCH) /{gsub(/\)/,"",$2); v[$1]=$2} END{b=v["set(LLAMA_VERSION_MAJOR"]"."v["set(LLAMA_VERSION_MINOR"]"."v["set(LLAMA_VERSION_PATCH"]; if (b !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1; print b}' CMakeLists.txt)" || exit 1
+          echo "LLAMA_VERSION_FULL=${VBASE}+${VERSION_DATE}" >> "$GITHUB_ENV"
 
       - name: Build
         shell: cmd
@@ -795,6 +848,7 @@ jobs:
             -DGGML_VULKAN=ON ^
             -DLLAMA_BUILD_NUMBER=%BUILD_NUMBER% ^
             -DLLAMA_BUILD_COMMIT=%COMMIT_ID_SHORT% ^
+            -DLLAMA_VERSION_DATE=%VERSION_DATE% ^
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j %NUMBER_OF_PROCESSORS% --target llama-cli llama-server ggml-rpc-server
 
@@ -831,7 +885,7 @@ jobs:
       - name: Pack artifacts
         shell: bash
         run: |
-          printf '%s-%s' "$BUILD_DATE" "$COMMIT_ID_SHORT" > ./build/bin/VERSION
+          printf '%s' "$LLAMA_VERSION_FULL" > ./build/bin/VERSION
           cp miaosoft/scripts/install/install.bat ./build/bin/install.bat
           cp LICENSE ./build/bin/
           # build/bin holds the exes + dlls (Ninja single-config puts outputs in build/bin)
@@ -873,8 +927,17 @@ jobs:
         shell: bash
         run: |
           echo "BUILD_NUMBER=$(date -u +%y%m%d)"     >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(date -u +%Y%m%d)"       >> "$GITHUB_ENV"
           echo "COMMIT_ID_SHORT=${GITHUB_SHA:0:8}"   >> "$GITHUB_ENV"
+          # version-date-suffix: release/sandbox 分支取分支日期, 其余 (master/dispatch)
+          # 取构建日; 完整版本 = CMake 基线 + 日期 (+build), 与 CMake LLAMA_VERSION 同口径。
+          if [[ "${GITHUB_REF_NAME}" =~ ^(release/release|sandbox/sandbox)-([0-9]{8})$ ]]; then
+            VERSION_DATE="${BASH_REMATCH[2]}"
+          else
+            VERSION_DATE="$(date -u +%Y%m%d)"
+          fi
+          echo "VERSION_DATE=${VERSION_DATE}" >> "$GITHUB_ENV"
+          VBASE="$(awk '/^set\(LLAMA_VERSION_(MAJOR|MINOR|PATCH) /{gsub(/\)/,"",$2); v[$1]=$2} END{b=v["set(LLAMA_VERSION_MAJOR"]"."v["set(LLAMA_VERSION_MINOR"]"."v["set(LLAMA_VERSION_PATCH"]; if (b !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1; print b}' CMakeLists.txt)" || exit 1
+          echo "LLAMA_VERSION_FULL=${VBASE}+${VERSION_DATE}" >> "$GITHUB_ENV"
 
       - name: Build
         # container steps default to sh (dash), where `source` does not exist
@@ -898,6 +961,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=icpx \
             -DLLAMA_BUILD_NUMBER="$BUILD_NUMBER" \
             -DLLAMA_BUILD_COMMIT="$COMMIT_ID_SHORT" \
+            -DLLAMA_VERSION_DATE="$VERSION_DATE" \
             ${{ env.CMAKE_ARGS }}
           cmake --build build --config Release -j $(nproc) --target llama-cli llama-server ggml-rpc-server
 
@@ -927,7 +991,7 @@ jobs:
 
       - name: Pack artifacts
         run: |
-          echo "$BUILD_DATE-$COMMIT_ID_SHORT" > build/bin/VERSION
+          echo "$LLAMA_VERSION_FULL" > build/bin/VERSION
           cp miaosoft/scripts/install/install.sh build/bin/
           cp LICENSE build/bin/
           # zip -y stores symlinks as links; 7z -snl writes them as plain
@@ -962,8 +1026,14 @@ jobs:
       - name: Compute version strings
         shell: bash
         run: |
-          echo "BUILD_DATE=$(date -u +%Y%m%d)"     >> $GITHUB_ENV
-          echo "COMMIT_ID=${GITHUB_SHA:0:8}"       >> $GITHUB_ENV
+          # version-date-suffix: 完整版本 = CMake 基线 + 日期 (+build), 与构建作业同口径。
+          if [[ "${GITHUB_REF_NAME}" =~ ^(release/release|sandbox/sandbox)-([0-9]{8})$ ]]; then
+            VERSION_DATE="${BASH_REMATCH[2]}"
+          else
+            VERSION_DATE="$(date -u +%Y%m%d)"
+          fi
+          VBASE="$(awk '/^set\(LLAMA_VERSION_(MAJOR|MINOR|PATCH) /{gsub(/\)/,"",$2); v[$1]=$2} END{b=v["set(LLAMA_VERSION_MAJOR"]"."v["set(LLAMA_VERSION_MINOR"]"."v["set(LLAMA_VERSION_PATCH"]; if (b !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1; print b}' CMakeLists.txt)" || exit 1
+          echo "LLAMA_VERSION_FULL=${VBASE}+${VERSION_DATE}" >> "$GITHUB_ENV"
 
       - name: Download artifacts
         uses: actions/download-artifact@v7
@@ -1000,12 +1070,12 @@ jobs:
             echo "sha256=$sha256"
             # sidecar manifest for the istation downloader (same name + .manifest)
             printf '{\n  "artifact_sha256": "%s",\n  "artifact_size_bytes": %s,\n  "built_at": "%s",\n  "version": "%s"\n}\n' \
-              "$sha256" "$size" "$built_at" "${BUILD_DATE}-${COMMIT_ID}" > "$f.manifest"
+              "$sha256" "$size" "$built_at" "${LLAMA_VERSION_FULL}" > "$f.manifest"
             cat "$f.manifest"
-            ./../ossutil64 cp "$f" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/$f" \
+            ./../ossutil64 cp "$f" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/${{ env.LLAMA_VERSION_FULL }}/$f" \
               -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f \
               --meta "x-oss-meta-sha256:$sha256"
-            ./../ossutil64 cp "$f.manifest" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/$f.manifest" \
+            ./../ossutil64 cp "$f.manifest" "oss://${{ env.OSS_BUCKET }}/${{ env.OSS_PREFIX }}/${{ env.LLAMA_VERSION_FULL }}/$f.manifest" \
               -i "$OSS_ID" -k "$OSS_KEY" -e "${{ env.OSS_ENDPOINT }}" -f
           done
 
@@ -1035,8 +1105,14 @@ jobs:
       - name: Compute version strings
         shell: bash
         run: |
-          echo "BUILD_DATE=$(date -u +%Y%m%d)"     >> $GITHUB_ENV
-          echo "COMMIT_ID=${GITHUB_SHA:0:8}"       >> $GITHUB_ENV
+          # version-date-suffix: 完整版本 = CMake 基线 + 日期 (+build), 与构建作业同口径。
+          if [[ "${GITHUB_REF_NAME}" =~ ^(release/release|sandbox/sandbox)-([0-9]{8})$ ]]; then
+            VERSION_DATE="${BASH_REMATCH[2]}"
+          else
+            VERSION_DATE="$(date -u +%Y%m%d)"
+          fi
+          VBASE="$(awk '/^set\(LLAMA_VERSION_(MAJOR|MINOR|PATCH) /{gsub(/\)/,"",$2); v[$1]=$2} END{b=v["set(LLAMA_VERSION_MAJOR"]"."v["set(LLAMA_VERSION_MINOR"]"."v["set(LLAMA_VERSION_PATCH"]; if (b !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1; print b}' CMakeLists.txt)" || exit 1
+          echo "LLAMA_VERSION_FULL=${VBASE}+${VERSION_DATE}" >> "$GITHUB_ENV"
 
       - name: Download artifacts
         uses: actions/download-artifact@v7
@@ -1051,13 +1127,13 @@ jobs:
         run: |
           set -e
           shopt -s nullglob
-          mkdir -p "upload_root/${{ env.HF_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}"
+          mkdir -p "upload_root/${{ env.HF_FOLDER_IN_REPO }}/${{ env.LLAMA_VERSION_FULL }}"
           files=( artifact/*.zip )
           if [ ${#files[@]} -eq 0 ]; then
             echo "No archives to upload"; exit 0
           fi
           for f in "${files[@]}"; do
-            cp "$f" "upload_root/${{ env.HF_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/"
+            cp "$f" "upload_root/${{ env.HF_FOLDER_IN_REPO }}/${{ env.LLAMA_VERSION_FULL }}/"
           done
           find upload_root -type f | sort
 
@@ -1075,7 +1151,7 @@ jobs:
           api = HfApi(token=os.environ["HF_TOKEN"])
           repo_id = os.environ["HF_REPO_ID"]
           folder_in_repo = os.environ["HF_FOLDER_IN_REPO"]
-          for sub in [os.environ["BUILD_DATE"] + "-" + os.environ["COMMIT_ID"]]:
+          for sub in [os.environ["LLAMA_VERSION_FULL"]]:
               api.upload_folder(
                   repo_id=repo_id,
                   repo_type="dataset",
@@ -1112,8 +1188,14 @@ jobs:
       - name: Compute version strings
         shell: bash
         run: |
-          echo "BUILD_DATE=$(date -u +%Y%m%d)"     >> $GITHUB_ENV
-          echo "COMMIT_ID=${GITHUB_SHA:0:8}"       >> $GITHUB_ENV
+          # version-date-suffix: 完整版本 = CMake 基线 + 日期 (+build), 与构建作业同口径。
+          if [[ "${GITHUB_REF_NAME}" =~ ^(release/release|sandbox/sandbox)-([0-9]{8})$ ]]; then
+            VERSION_DATE="${BASH_REMATCH[2]}"
+          else
+            VERSION_DATE="$(date -u +%Y%m%d)"
+          fi
+          VBASE="$(awk '/^set\(LLAMA_VERSION_(MAJOR|MINOR|PATCH) /{gsub(/\)/,"",$2); v[$1]=$2} END{b=v["set(LLAMA_VERSION_MAJOR"]"."v["set(LLAMA_VERSION_MINOR"]"."v["set(LLAMA_VERSION_PATCH"]; if (b !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1; print b}' CMakeLists.txt)" || exit 1
+          echo "LLAMA_VERSION_FULL=${VBASE}+${VERSION_DATE}" >> "$GITHUB_ENV"
 
       - name: Download artifacts
         uses: actions/download-artifact@v7
@@ -1125,13 +1207,13 @@ jobs:
         run: |
           set -e
           shopt -s nullglob
-          mkdir -p "upload_root/${{ env.MS_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}"
+          mkdir -p "upload_root/${{ env.MS_FOLDER_IN_REPO }}/${{ env.LLAMA_VERSION_FULL }}"
           files=( artifact/*.zip )
           if [ ${#files[@]} -eq 0 ]; then
             echo "No archives to upload"; exit 0
           fi
           for f in "${files[@]}"; do
-            cp "$f" "upload_root/${{ env.MS_FOLDER_IN_REPO }}/${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}/"
+            cp "$f" "upload_root/${{ env.MS_FOLDER_IN_REPO }}/${{ env.LLAMA_VERSION_FULL }}/"
           done
           find upload_root -type f | sort
 
@@ -1149,7 +1231,7 @@ jobs:
           api = HubApi(token=os.environ["MODELSCOPE_API_TOKEN"])
           repo_id = os.environ["MS_REPO_ID"]
           folder_in_repo = os.environ["MS_FOLDER_IN_REPO"]
-          for sub in [os.environ["BUILD_DATE"] + "-" + os.environ["COMMIT_ID"]]:
+          for sub in [os.environ["LLAMA_VERSION_FULL"]]:
               api.upload_folder(
                   repo_id=repo_id,
                   repo_type="dataset",
